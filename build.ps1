@@ -34,6 +34,21 @@ function Run($File, [string[]]$ArgsList) {
   }
 }
 
+function Assert-UnderRoot($Path) {
+  $FullPath = [System.IO.Path]::GetFullPath($Path)
+  $RootPath = [System.IO.Path]::GetFullPath($Root).TrimEnd(
+    [System.IO.Path]::DirectorySeparatorChar,
+    [System.IO.Path]::AltDirectorySeparatorChar
+  )
+  if (-not $FullPath.StartsWith(
+      $RootPath + [System.IO.Path]::DirectorySeparatorChar,
+      [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+    Fail "Refuse to touch path outside project root: $FullPath"
+  }
+  return $FullPath
+}
+
 Step "Check toolchain"
 Need-Command "node" "Install Node.js 24.11+ first."
 Need-Command "pnpm" "Install pnpm 10+ first: corepack enable"
@@ -48,7 +63,7 @@ if ($Install -or -not (Test-Path "node_modules")) {
 if ($Clean) {
   Step "Clean generated output"
   foreach ($Path in @("dist", "build")) {
-    $FullPath = Join-Path $Root $Path
+    $FullPath = Assert-UnderRoot (Join-Path $Root $Path)
     if (Test-Path $FullPath) {
       Remove-Item -LiteralPath $FullPath -Recurse -Force
     }
