@@ -194,7 +194,8 @@ const VideoPlayerV2Inner = observer(
       let stream: MediaStream | null = null
       try {
         stream = captureStream.call(currentVideoEl)
-        setUnderlayStream(stream)
+        stream.getAudioTracks().forEach((track) => track.stop())
+        setUnderlayStream(new MediaStream(stream.getVideoTracks()))
       } catch (error) {
         console.warn(
           '[dmMiniPlayer] pseudo transparent underlay unavailable',

@@ -53,7 +53,11 @@ type SettingsBackupFile = {
 }
 
 const SETTING_PANEL_LOCAL_STORAGE_KEY = '__settingPanel_config_save'
-const BACKUP_LOCAL_STORAGE_KEYS = [SETTING_PANEL_LOCAL_STORAGE_KEY]
+const PLAYER_VOLUME_LOCAL_STORAGE_KEY = 'vp_volume'
+const BACKUP_LOCAL_STORAGE_KEYS = [
+  SETTING_PANEL_LOCAL_STORAGE_KEY,
+  PLAYER_VOLUME_LOCAL_STORAGE_KEY,
+]
 
 const getSettingSnapshot = () =>
   Object.fromEntries(
