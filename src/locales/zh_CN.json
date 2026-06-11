@@ -8,6 +8,11 @@
     "videoNoBorderDesc": "打开画中画时，根据之前保存的窗口大小自动调整成没黑边的视频",
     "videoSharpening": "视频锐化",
     "videoSharpeningDesc": "画中画宽度小于800时效果很明显",
+    "mousePassthrough": "鼠标穿透",
+    "mousePassthroughDesc": "开启后播放器本体不拦截鼠标，只有控制按钮可点击",
+    "mousePassthroughExit": "关闭穿透",
+    "viewportOpacity": "播放列表透明度",
+    "viewportOpacityDesc": "调整展开播放列表视窗的背景不透明度，0% 最透明，100% 最深",
     "videoNoBorder_default": "默认不调整",
     "videoNoBorder_width": "以宽度为准",
     "videoNoBorder_height": "以高度为准",
@@ -126,9 +131,12 @@
     "exportImportSettings": "导出/导入设置",
     "exportSettings": "导出设置",
     "importSettings": "导入设置",
+    "importConfirm": "导入会覆盖当前扩展存储和设置，确认还原吗？",
     "importSuccess": "设置导入成功，页面将刷新",
     "importError": "导入失败，文件格式不正确",
-    "bpSharpening": "视频锐化"
+    "bpSharpening": "视频锐化",
+    "bpMousePassthrough": "鼠标穿透",
+    "bpViewportOpacity": "播放列表透明度"
   },
   "pos": {
     "topLeft": "左上",

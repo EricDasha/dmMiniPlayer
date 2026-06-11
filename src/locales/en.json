@@ -8,6 +8,11 @@
     "videoNoBorderDesc": "When opening PIP, the video without black borders is automatically adjusted according to the previously saved window size.",
     "videoSharpening": "Video Sharpening",
     "videoSharpeningDesc": "The effect is obvious when the PIP width is less than 800.",
+    "mousePassthrough": "Mouse passthrough",
+    "mousePassthroughDesc": "When enabled, the player surface does not capture mouse events; only control buttons remain clickable.",
+    "mousePassthroughExit": "Exit passthrough",
+    "viewportOpacity": "Playlist opacity",
+    "viewportOpacityDesc": "Adjust the expanded playlist panel background opacity. 0% is most transparent; 100% is darkest.",
     "videoNoBorder_default": "Not adjusted by default",
     "videoNoBorder_width": "Based on width",
     "videoNoBorder_height": "Based on height",
@@ -126,9 +131,12 @@
     "exportImportSettings": "Export/Import Settings",
     "exportSettings": "Export Settings",
     "importSettings": "Import Settings",
+    "importConfirm": "Import will overwrite current extension storage and settings. Restore now?",
     "importSuccess": "Settings imported successfully, page will reload",
     "importError": "Import failed, invalid file format",
-    "bpSharpening": "Video Sharpening"
+    "bpSharpening": "Video Sharpening",
+    "bpMousePassthrough": "Mouse passthrough",
+    "bpViewportOpacity": "Playlist opacity"
   },
   "pos": {
     "topLeft": "Top left",

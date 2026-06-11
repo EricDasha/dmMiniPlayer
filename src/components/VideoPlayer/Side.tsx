@@ -7,6 +7,7 @@ import { observer } from 'mobx-react'
 import { useContext, useEffect, useRef, useState, type FC } from 'react'
 import { LeftOutlined } from '@ant-design/icons'
 import configStore, { SideTriggerType } from '@root/store/config'
+import ViewportOpacitySlider from '../VideoPlayerV2/bottomPanel/ViewportOpacitySlider'
 import vpContext from '../VideoPlayerV2/context'
 
 export type VideoItem = {
@@ -87,56 +88,78 @@ const VideoPlayerSideInner: FC<Props> = observer((props) => {
     })
   }, [activeEl])
 
+  const sidePanelBgOpacity = Math.max(
+    0,
+    Math.min(0.72, ((configStore.viewportOpacity ?? 45) / 100) * 0.72),
+  )
+
   return (
     <div className="side-outer-container h-full">
       <div
-        className="side-inner-container w-[var(--side-width)] h-full ml-auto p-[8px] overflow-auto text-white text-sm bg-[#0007] bor-l-[#fff7] custom-scrollbar flex-col gap-[8px]"
-        ref={containerRef}
+        className="side-inner-container w-[var(--side-width)] h-full ml-auto p-[8px] overflow-hidden text-white text-sm backdrop-blur-[2px] bor-l-[#fff5] flex flex-col gap-[8px]"
+        style={{
+          backgroundColor: `rgba(0, 0, 0, ${sidePanelBgOpacity})`,
+        }}
       >
-        {props.sideSwitcher.videoList.map((list, vi) => {
-          if (!list.items?.length) return null
-          return (
-            <div key={vi}>
-              <h3 className="text-sm mb-1">{list.category}</h3>
-              <ul className="select-list flex flex-col gap-1 m-0 pl-0 list-none">
-                {list.items.map((item, ii) => {
-                  const isCoverItem = !!item.cover
-                  return (
-                    <li
-                      key={item.id ?? ii}
-                      className={classNames(
-                        'px-[8px] py-[2px] overflow-hidden whitespace-nowrap overflow-ellipsis bor-[#fff7] rounded-[2px] cursor-pointer',
-                        activeMap[vi] == ii && 'active bg-[#80bfff]',
-                        isCoverItem && 'cover-title f-i-center gap-1',
-                      )}
-                      title={item.title}
-                      ref={(el) => {
-                        if (!el) return
-                        if (activeMap[vi] == ii) setActiveEl(el)
-                      }}
-                      onClick={() => {
-                        props.onClick?.(item)
-                        if (list.isSpa === false) {
-                          // videoChanger.current
-                          //   .changeVideo(item.link)
-                          //   .then(() => {
-                          //     props.onChange?.(item)
-                          //   })
-                        } else {
-                          item.linkEl.click()
-                          props.onChange?.(item)
-                        }
-                        setActiveMap((map) => ({ ...map, [vi]: ii }))
-                      }}
-                    >
-                      {isCoverItem ? <CoverTitleItem {...item} /> : item.title}
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          )
-        })}
+        <div
+          className="flex-1 overflow-auto custom-scrollbar flex-col gap-[8px]"
+          ref={containerRef}
+        >
+          {props.sideSwitcher.videoList.map((list, vi) => {
+            if (!list.items?.length) return null
+            return (
+              <div key={vi}>
+                <h3 className="text-sm mb-1">{list.category}</h3>
+                <ul className="select-list flex flex-col gap-1 m-0 pl-0 list-none">
+                  {list.items.map((item, ii) => {
+                    const isCoverItem = !!item.cover
+                    return (
+                      <li
+                        key={item.id ?? ii}
+                        className={classNames(
+                          'px-[8px] py-[2px] overflow-hidden whitespace-nowrap overflow-ellipsis bor-[#fff7] rounded-[2px] cursor-pointer',
+                          activeMap[vi] == ii && 'active bg-[#80bfff99]',
+                          isCoverItem && 'cover-title f-i-center gap-1',
+                        )}
+                        title={item.title}
+                        ref={(el) => {
+                          if (!el) return
+                          if (activeMap[vi] == ii) setActiveEl(el)
+                        }}
+                        onClick={() => {
+                          props.onClick?.(item)
+                          if (list.isSpa === false) {
+                            // videoChanger.current
+                            //   .changeVideo(item.link)
+                            //   .then(() => {
+                            //     props.onChange?.(item)
+                            //   })
+                          } else {
+                            item.linkEl.click()
+                            props.onChange?.(item)
+                          }
+                          setActiveMap((map) => ({ ...map, [vi]: ii }))
+                        }}
+                      >
+                        {isCoverItem ? (
+                          <CoverTitleItem {...item} />
+                        ) : (
+                          item.title
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            )
+          })}
+        </div>
+
+        {configStore.bp_viewportOpacity && (
+          <div className="dmmp-keep-pointer border-t border-[#fff3] pt-2">
+            <ViewportOpacitySlider />
+          </div>
+        )}
       </div>
     </div>
   )
@@ -207,7 +230,7 @@ const VideoPlayerSide: FC = (props) => {
       <VideoPlayerSideInner sideSwitcher={sideSwitcher} />
       <div
         className={classNames(
-          'side-dragger group-[&.active]:opacity-100 opacity-0 absolute ab-vertical-center w-[15px] h-[30px] bg-[#0007] rounded-tl-[5px] rounded-bl-[5px] transition-all text-white f-center',
+          'side-dragger group-[&.active]:opacity-100 opacity-0 absolute ab-vertical-center w-[15px] h-[30px] bg-[#0005] backdrop-blur-[2px] rounded-tl-[5px] rounded-bl-[5px] transition-all text-white f-center',
           isHoverType && 'group-hover/side:opacity-100',
           // isVisible && 'opacity-100',
           isClickType && 'cursor-pointer w-[5px] group-hover/side:opacity-100',

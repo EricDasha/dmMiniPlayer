@@ -31,7 +31,7 @@ const DanmakuContainer: FC = (props) => {
 
   return (
     <div
-      className="absolute left-0 top-0 size-full overflow-hidden pointer-events-none"
+      className="viewport-opacity-target absolute left-0 top-0 size-full overflow-hidden pointer-events-none"
       ref={danmakuContainer}
     ></div>
   )

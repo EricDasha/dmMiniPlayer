@@ -13,7 +13,7 @@ const ActionButton: FC<Props> = (props) => {
     <div
       {..._props}
       className={classNames(
-        'p-1 cursor-pointer hover:bg-[#333] rounded-sm transition-colors leading-[18px]',
+        'dmmp-keep-pointer p-1 cursor-pointer hover:bg-[#333] rounded-sm transition-colors leading-[18px]',
         isUnActive && 'opacity-50',
         props.className,
       )}

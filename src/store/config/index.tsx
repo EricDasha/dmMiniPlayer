@@ -43,8 +43,57 @@ type SettingsBackupFile = {
   app?: string
   schemaVersion?: number
   exportedAt?: string
-  settings?: unknown
+  settings?: Record<string, unknown>
+  storage?: {
+    sync?: Record<string, unknown>
+    local?: Record<string, unknown>
+  }
+  localStorage?: Record<string, string | null>
   [key: string]: unknown
+}
+
+const SETTING_PANEL_LOCAL_STORAGE_KEY = '__settingPanel_config_save'
+const BACKUP_LOCAL_STORAGE_KEYS = [SETTING_PANEL_LOCAL_STORAGE_KEY]
+
+const getSettingSnapshot = () =>
+  Object.fromEntries(
+    Object.keys(baseConfigMap).map((key) => [
+      key,
+      configStore[key as keyof typeof configStore],
+    ]),
+  )
+
+const getStorageSnapshot = async () => {
+  const [sync, local] = await Promise.all([
+    Browser.storage.sync.get(null as any),
+    Browser.storage.local.get(null as any),
+  ])
+
+  return {
+    sync: sync as Record<string, unknown>,
+    local: local as Record<string, unknown>,
+  }
+}
+
+const getLocalStorageSnapshot = () =>
+  Object.fromEntries(
+    BACKUP_LOCAL_STORAGE_KEYS.map((key) => [key, localStorage.getItem(key)]),
+  )
+
+const parseStorageRecord = (value: unknown): Record<string, unknown> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return value as Record<string, unknown>
+}
+
+const restoreStorageArea = async (
+  area: Browser.Storage.StorageArea,
+  value: unknown,
+) => {
+  const data = parseStorageRecord(value)
+  await area.clear()
+  if (Object.keys(data).length) {
+    await area.set(data)
+  }
 }
 
 if (isDev) {
@@ -100,6 +149,19 @@ export const baseConfigMap = {
     defaultValue: false,
     label: t('settingPanel.videoSharpening'),
     desc: t('settingPanel.videoSharpeningDesc'),
+  }),
+  mousePassthrough: config({
+    defaultValue: false,
+    label: t('settingPanel.mousePassthrough'),
+    desc: t('settingPanel.mousePassthroughDesc'),
+  }),
+  viewportOpacity: config({
+    defaultValue: 45,
+    type: 'range',
+    range: [0, 100],
+    rangeStep: 1,
+    label: t('settingPanel.viewportOpacity'),
+    desc: t('settingPanel.viewportOpacityDesc'),
   }),
   videoNoBorder: config<videoBorderType>({
     type: 'group',
@@ -262,19 +324,18 @@ export const baseConfigMap = {
         fontSize: '13px',
         background: '#f5f5f5',
       }
-      const handleExport = () => {
-        const settings = Object.fromEntries(
-          Object.keys(baseConfigMap).map((key) => [
-            key,
-            configStore[key as keyof typeof configStore],
-          ]),
-        )
+      const handleExport = async () => {
+        const settings = getSettingSnapshot()
+        const storage = await getStorageSnapshot()
+        const localStorage = getLocalStorageSnapshot()
         const data = JSON.stringify(
           {
             app: 'dmMiniPlayer',
-            schemaVersion: 1,
+            schemaVersion: 2,
             exportedAt: new Date().toISOString(),
             settings,
+            storage,
+            localStorage,
           },
           null,
           2,
@@ -297,8 +358,11 @@ export const baseConfigMap = {
           try {
             const text = await file.text()
             const data = JSON.parse(text) as SettingsBackupFile
-            const rawSettings =
-              data && 'settings' in data ? data.settings : data
+            if (data?.app && data.app !== 'dmMiniPlayer') {
+              throw new Error('invalid app')
+            }
+
+            const rawSettings = data.settings ?? data
             if (typeof rawSettings !== 'object' || rawSettings === null) {
               throw new Error('invalid')
             }
@@ -312,10 +376,62 @@ export const baseConfigMap = {
                 ]),
             )
             if (!Object.keys(settings).length) throw new Error('invalid')
+
+            if (!confirm(t('settingPanel.importConfirm' as any))) {
+              return
+            }
+
+            const hasStorageBackup = !!data.storage
+            if (hasStorageBackup) {
+              const nextSync = {
+                ...parseStorageRecord(data.storage?.sync),
+              }
+              const nextLocal = {
+                ...parseStorageRecord(data.storage?.local),
+              }
+
+              if (!nextSync[DM_MINI_PLAYER_CONFIG]) {
+                nextSync[DM_MINI_PLAYER_CONFIG] = settings
+              }
+
+              await Promise.all([
+                restoreStorageArea(Browser.storage.sync, nextSync),
+                restoreStorageArea(Browser.storage.local, nextLocal),
+              ])
+            } else if (isPluginEnv) {
+              await setBrowserSyncStorage(DM_MINI_PLAYER_CONFIG, settings)
+            }
+
+            Object.entries(data.localStorage ?? {}).forEach(([key, value]) => {
+              if (!BACKUP_LOCAL_STORAGE_KEYS.includes(key)) return
+              if (value === null) {
+                localStorage.removeItem(key)
+              } else {
+                localStorage.setItem(key, value)
+              }
+            })
+
+            if (!isPluginEnv) {
+              localStorage.setItem(
+                SETTING_PANEL_LOCAL_STORAGE_KEY,
+                JSON.stringify(settings),
+              )
+            }
+
+            if ('language' in settings) {
+              await setBrowserLocalStorage(LOCALE, settings.language as any)
+            }
+
+            if ('floatButtonVisible' in settings) {
+              await setBrowserSyncStorage(
+                FLOAT_BTN_HIDDEN,
+                !settings.floatButtonVisible,
+              )
+            }
+
             _updateConfig(settings)
-            saveConfig()
             alert(t('settingPanel.importSuccess'))
-            location.reload()
+            setTimeout(() => location.reload(), 100)
           } catch {
             alert(t('settingPanel.importError'))
           }

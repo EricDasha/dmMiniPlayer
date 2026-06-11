@@ -4,7 +4,7 @@ import { observer } from 'mobx-react'
 import { FC, MouseEvent } from 'react'
 import ActionButton from './ActionButton'
 
-const SharpeningIcon: FC<{ active?: boolean }> = ({ active }) => (
+const MousePassthroughIcon: FC<{ active?: boolean }> = ({ active }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width="18"
@@ -17,18 +17,19 @@ const SharpeningIcon: FC<{ active?: boolean }> = ({ active }) => (
     strokeLinejoin="round"
     style={{ opacity: active ? 1 : 0.5 }}
   >
-    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+    <path d="M4 4l16 16" />
+    <path d="M8 4l4 14 2-5 5-2L8 4z" />
   </svg>
 )
 
-const SharpeningButton: FC = observer(() => {
-  const active = configStore.videoSharpening
+const MousePassthroughButton: FC = observer(() => {
+  const active = configStore.mousePassthrough
 
   const handleToggle = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault()
     event.stopPropagation()
 
-    updateConfig({ videoSharpening: !configStore.videoSharpening })
+    updateConfig({ mousePassthrough: !configStore.mousePassthrough })
     saveConfig()
   }
 
@@ -36,11 +37,11 @@ const SharpeningButton: FC = observer(() => {
     <ActionButton
       onClick={handleToggle}
       isUnActive={!active}
-      title={t('settingPanel.videoSharpening')}
+      title={t('settingPanel.mousePassthrough' as any)}
     >
-      <SharpeningIcon active={active} />
+      <MousePassthroughIcon active={active} />
     </ActionButton>
   )
 })
 
-export default SharpeningButton
+export default MousePassthroughButton

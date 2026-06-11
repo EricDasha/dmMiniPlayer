@@ -14,9 +14,14 @@ import useDebounceTimeoutCallback from '@root/hook/useDebounceTimeoutCallback'
 import useOpenIsolationModal from '@root/hook/useOpenIsolationModal'
 import useTargetEventListener from '@root/hook/useTargetEventListener'
 import PostMessageEvent from '@root/shared/postMessageEvent'
-import configStore, { ReplacerDbClickAction } from '@root/store/config'
+import configStore, {
+  ReplacerDbClickAction,
+  saveConfig,
+  updateConfig,
+} from '@root/store/config'
 import { isDocPIP, isIframe, ownerWindow, wait } from '@root/utils'
 import { hasParent } from '@root/utils/dom'
+import { t } from '@root/utils/i18n'
 import screenfull from '@root/utils/screenfull'
 import { Omit } from '@root/utils/typeUtils'
 import { postMessageToTop } from '@root/utils/windowMessages'
@@ -40,6 +45,7 @@ import SubtitleText from '../VideoPlayer/subtitle/SubtitleText'
 import ActionButton from './bottomPanel/ActionButton'
 import CurrentTimeTooltipsWithKeydown from './bottomPanel/CurrentTimeTooltipsWithKeydown'
 import DanmakuSettingBtn from './bottomPanel/DanmakuSettingBtn'
+import MousePassthroughButton from './bottomPanel/MousePassthroughButton'
 import SharpeningButton from './bottomPanel/SharpeningButton'
 import PlaybackRateSelection from './bottomPanel/PlaybackRateSelection'
 import PlayedTime from './bottomPanel/PlayedTime'
@@ -362,6 +368,7 @@ const VideoPlayerV2Inner = observer(
           'video-player-v2 relative overflow-hidden select-none wh-[100%] group',
           props.className,
           configStore.vpActionAreaLock && ACTION_AREA_ACTIVE,
+          configStore.mousePassthrough && 'mouse-passthrough',
         )}
         style={{
           '--color-main': '#0669ff',
@@ -406,6 +413,34 @@ const VideoPlayerV2Inner = observer(
     pointer-events: none !important;
     transform: initial !important;
     z-index: initial !important;
+  }`}
+          </style>
+          <style>
+            {`.video-player-v2.mouse-passthrough {
+    pointer-events: none !important;
+  }
+
+  .video-player-v2.mouse-passthrough .video-action-area,
+  .video-player-v2.mouse-passthrough .video-action-area .mask,
+  .video-player-v2.mouse-passthrough .video-action-area .actions,
+  .video-player-v2.mouse-passthrough .side-action-area,
+  .video-player-v2.mouse-passthrough .video-container {
+    pointer-events: none !important;
+  }
+  .video-player-v2.mouse-passthrough .video-action-area {
+    bottom: calc(-1*(var(--area-height)+5px)) !important;
+  }
+  .video-player-v2.mouse-passthrough .video-action-area > div:last-child {
+    opacity: 0 !important;
+  }
+  .video-player-v2.mouse-passthrough .dmmp-keep-pointer,
+  .video-player-v2.mouse-passthrough .dmmp-keep-pointer *,
+  .video-player-v2.mouse-passthrough .volume,
+  .video-player-v2.mouse-passthrough .volume *,
+  .video-player-v2.mouse-passthrough .side-dragger,
+  .video-player-v2.mouse-passthrough .mouse-passthrough-exit,
+  .video-player-v2.mouse-passthrough .mouse-passthrough-exit * {
+    pointer-events: auto !important;
   }`}
           </style>
           {!props.useWebVideo && (
@@ -484,6 +519,7 @@ const VideoPlayerV2Inner = observer(
                 {configStore.bp_playbackRate && <PlaybackRateSelection />}
 
                 {configStore.bp_sharpening && <SharpeningButton />}
+                {configStore.bp_mousePassthrough && <MousePassthroughButton />}
 
                 <ActionButton onClick={handleOpenSetting} className="mb:hidden">
                   <SettingOutlined className="block" />
@@ -532,6 +568,26 @@ const VideoPlayerV2Inner = observer(
 
         {/* 侧边操作栏 */}
         <VideoPlayerSide />
+
+        {configStore.mousePassthrough && (
+          <button
+            className={classNames(
+              'mouse-passthrough-exit absolute right-[56px] top-[8px] z-30',
+              'h-[28px] px-[10px] rounded-[4px] border border-[#fff7]',
+              'bg-[#0009] hover:bg-[#111] text-white text-[12px]',
+              'shadow-[0_2px_8px_#0008] transition-colors cursor-pointer',
+            )}
+            title={t('settingPanel.mousePassthrough' as any)}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              updateConfig({ mousePassthrough: false })
+              saveConfig()
+            }}
+          >
+            {t('settingPanel.mousePassthroughExit' as any)}
+          </button>
+        )}
 
         {props.isReplacerMode && (
           <div

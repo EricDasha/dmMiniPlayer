@@ -236,11 +236,12 @@ export default class DocPIPWebProvider extends WebProvider {
 
     pipWindow.document.body.appendChild(playerEl)
 
-    // docPIP有自带的样式，需要覆盖掉
+    // docPIP有自带的样式，需要覆盖掉。原生 DocPIP 窗口不支持 OS 级透明，使用黑底避免透明内容白化。
     const docPIPRootStyle = createElement('style', {
-      innerHTML: `body{
+      innerHTML: `html,
+body{
   margin: 0;
-  background-color: #000;
+  background: #000 !important;
 }
 video{
   width: 100%;

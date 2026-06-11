@@ -49,6 +49,14 @@ const config_features = {
     label: t('settingPanel.bpSharpening'),
     defaultValue: true,
   }),
+  bp_mousePassthrough: config({
+    label: t('settingPanel.bpMousePassthrough'),
+    defaultValue: true,
+  }),
+  bp_viewportOpacity: config({
+    label: t('settingPanel.bpViewportOpacity'),
+    defaultValue: true,
+  }),
 }
 
 export default config_features
