@@ -156,9 +156,9 @@ export const baseConfigMap = {
     desc: t('settingPanel.mousePassthroughDesc'),
   }),
   viewportOpacity: config({
-    defaultValue: 45,
+    defaultValue: 100,
     type: 'range',
-    range: [0, 100],
+    range: [5, 100],
     rangeStep: 1,
     label: t('settingPanel.viewportOpacity'),
     desc: t('settingPanel.viewportOpacityDesc'),

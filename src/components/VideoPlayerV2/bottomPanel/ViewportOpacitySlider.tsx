@@ -21,10 +21,10 @@ const OpacityIcon: FC = () => (
 )
 
 const ViewportOpacitySlider: FC = observer(() => {
-  const opacity = configStore.viewportOpacity ?? 45
+  const opacity = Math.max(5, Math.min(100, configStore.viewportOpacity ?? 100))
 
   const handleChange = (percent: number) => {
-    const nextOpacity = Math.max(0, Math.min(100, Math.round(percent)))
+    const nextOpacity = Math.max(5, Math.min(100, Math.round(percent)))
     updateConfig({ viewportOpacity: nextOpacity })
     saveConfig()
   }
@@ -44,14 +44,14 @@ const ViewportOpacitySlider: FC = observer(() => {
       <input
         className="viewport-opacity-range w-[86px] h-[14px] cursor-pointer"
         type="range"
-        min={0}
+        min={5}
         max={100}
         step={1}
         value={opacity}
         onChange={(event) => handleChange(Number(event.target.value))}
         style={
           {
-            '--opacity-percent': `${opacity}%`,
+            '--opacity-percent': `${((opacity - 5) / 95) * 100}%`,
           } as CSSProperties
         }
       />

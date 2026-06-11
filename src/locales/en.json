@@ -11,8 +11,8 @@
     "mousePassthrough": "Mouse passthrough",
     "mousePassthroughDesc": "When enabled, the player surface does not capture mouse events; only control buttons remain clickable.",
     "mousePassthroughExit": "Exit passthrough",
-    "viewportOpacity": "Playlist opacity",
-    "viewportOpacityDesc": "Adjust the expanded playlist panel background opacity. 0% is most transparent; 100% is darkest.",
+    "viewportOpacity": "Window opacity",
+    "viewportOpacityDesc": "Adjust the whole player window opacity. 5% is most transparent; 100% is opaque.",
     "videoNoBorder_default": "Not adjusted by default",
     "videoNoBorder_width": "Based on width",
     "videoNoBorder_height": "Based on height",
@@ -136,7 +136,7 @@
     "importError": "Import failed, invalid file format",
     "bpSharpening": "Video Sharpening",
     "bpMousePassthrough": "Mouse passthrough",
-    "bpViewportOpacity": "Playlist opacity"
+    "bpViewportOpacity": "Window opacity"
   },
   "pos": {
     "topLeft": "Top left",

@@ -88,9 +88,9 @@ const VideoPlayerSideInner: FC<Props> = observer((props) => {
     })
   }, [activeEl])
 
-  const sidePanelBgOpacity = Math.max(
-    0,
-    Math.min(0.72, ((configStore.viewportOpacity ?? 45) / 100) * 0.72),
+  const windowOpacity = Math.max(
+    0.05,
+    Math.min(1, (configStore.viewportOpacity ?? 100) / 100),
   )
 
   return (
@@ -98,11 +98,11 @@ const VideoPlayerSideInner: FC<Props> = observer((props) => {
       <div
         className="side-inner-container w-[var(--side-width)] h-full ml-auto p-[8px] overflow-hidden text-white text-sm backdrop-blur-[2px] bor-l-[#fff5] flex flex-col gap-[8px]"
         style={{
-          backgroundColor: `rgba(0, 0, 0, ${sidePanelBgOpacity})`,
+          backgroundColor: `rgba(0, 0, 0, ${0.44 * windowOpacity})`,
         }}
       >
         <div
-          className="flex-1 overflow-auto custom-scrollbar flex-col gap-[8px]"
+          className="window-opacity-target flex-1 overflow-auto custom-scrollbar flex-col gap-[8px]"
           ref={containerRef}
         >
           {props.sideSwitcher.videoList.map((list, vi) => {
@@ -156,7 +156,7 @@ const VideoPlayerSideInner: FC<Props> = observer((props) => {
         </div>
 
         {configStore.bp_viewportOpacity && (
-          <div className="dmmp-keep-pointer border-t border-[#fff3] pt-2">
+          <div className="dmmp-keep-pointer relative z-[2] border-t border-[#fff3] pt-2 opacity-100">
             <ViewportOpacitySlider />
           </div>
         )}

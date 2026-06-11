@@ -11,8 +11,8 @@
     "mousePassthrough": "鼠标穿透",
     "mousePassthroughDesc": "开启后播放器本体不拦截鼠标，只有控制按钮可点击",
     "mousePassthroughExit": "关闭穿透",
-    "viewportOpacity": "播放列表透明度",
-    "viewportOpacityDesc": "调整展开播放列表视窗的背景不透明度，0% 最透明，100% 最深",
+    "viewportOpacity": "窗口不透明度",
+    "viewportOpacityDesc": "调整播放器窗口整体不透明度，5% 最透明，100% 不透明",
     "videoNoBorder_default": "默认不调整",
     "videoNoBorder_width": "以宽度为准",
     "videoNoBorder_height": "以高度为准",
@@ -136,7 +136,7 @@
     "importError": "导入失败，文件格式不正确",
     "bpSharpening": "视频锐化",
     "bpMousePassthrough": "鼠标穿透",
-    "bpViewportOpacity": "播放列表透明度"
+    "bpViewportOpacity": "窗口不透明度"
   },
   "pos": {
     "topLeft": "左上",
