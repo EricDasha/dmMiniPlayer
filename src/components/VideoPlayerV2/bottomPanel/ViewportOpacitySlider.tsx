@@ -1,7 +1,7 @@
 import configStore, { saveConfig, updateConfig } from '@root/store/config'
 import { t } from '@root/utils/i18n'
 import { observer } from 'mobx-react'
-import { CSSProperties, FC, MouseEvent } from 'react'
+import { CSSProperties, FC, MouseEvent, WheelEvent } from 'react'
 
 const OpacityIcon: FC = () => (
   <svg
@@ -33,12 +33,21 @@ const ViewportOpacitySlider: FC = observer(() => {
     event.stopPropagation()
   }
 
+  const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const delta = event.deltaY < 0 ? 10 : -10
+    handleChange(opacity + delta)
+  }
+
   return (
     <div
       className="dmmp-keep-pointer f-i-center gap-2 h-[26px] px-2 rounded-[4px] bg-[#ffffff12] hover:bg-[#ffffff1f] transition-colors"
       title={`${t('settingPanel.viewportOpacity' as any)}: ${opacity}%`}
       onClick={stopEvent}
       onMouseDown={stopEvent}
+      onWheel={handleWheel}
     >
       <OpacityIcon />
       <input
@@ -68,6 +77,7 @@ const ViewportOpacitySlider: FC = observer(() => {
   height: 4px;
   border-radius: 999px;
   background: linear-gradient(90deg, var(--color-main) 0 var(--opacity-percent), rgba(255,255,255,.32) var(--opacity-percent) 100%);
+  transition: background 120ms linear;
 }
 .viewport-opacity-range::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -78,6 +88,7 @@ const ViewportOpacitySlider: FC = observer(() => {
   border: 1px solid rgba(255,255,255,.85);
   background: #fff;
   box-shadow: 0 1px 4px rgba(0,0,0,.45);
+  transition: transform 120ms linear;
 }
 .viewport-opacity-range::-moz-range-track {
   height: 4px;

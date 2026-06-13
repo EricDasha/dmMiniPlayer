@@ -1,5 +1,10 @@
 import WebextEvent from '@root/shared/webextEvent'
 import {
+  NATIVE_WINDOW_OPACITY_HOST,
+  type NativeWindowOpacityHostMessage,
+  type NativeWindowOpacityHostResponse,
+} from '@root/shared/nativeWindowOpacity'
+import {
   mv3GetDocPIPTab,
   mv3MoveTabsToPosition,
   mv3ResizeTabs,
@@ -7,6 +12,47 @@ import {
   setDocPIPTabId,
 } from '@root/utils/mv3'
 import { onMessage } from 'webext-bridge/background'
+
+let nativeWindowOpacityAvailable: boolean | undefined
+
+const sendNativeWindowOpacityMessage = (
+  message: NativeWindowOpacityHostMessage,
+) => {
+  return new Promise<NativeWindowOpacityHostResponse>((resolve) => {
+    try {
+      chrome.runtime.sendNativeMessage(
+        NATIVE_WINDOW_OPACITY_HOST,
+        message,
+        (response?: NativeWindowOpacityHostResponse) => {
+          const error = chrome.runtime.lastError?.message
+          if (error) {
+            nativeWindowOpacityAvailable = false
+            resolve({ ok: false, error })
+            return
+          }
+
+          resolve(response ?? { ok: false, error: 'empty native response' })
+        },
+      )
+    } catch (error) {
+      nativeWindowOpacityAvailable = false
+      resolve({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  })
+}
+
+const probeNativeWindowOpacity = async () => {
+  if (nativeWindowOpacityAvailable !== undefined) {
+    return nativeWindowOpacityAvailable
+  }
+
+  const response = await sendNativeWindowOpacityMessage({ command: 'ping' })
+  nativeWindowOpacityAvailable = !!response.ok
+  return nativeWindowOpacityAvailable
+}
 
 onMessage(WebextEvent.beforeStartPIP, async () => {
   // 通过将比较新旧的tab，找到docPIPTabId
@@ -70,6 +116,32 @@ onMessage(
     await mv3UpdateTab(docPIPTab, data)
   },
 )
+
+onMessage(WebextEvent.probeNativeWindowOpacity, async () => {
+  return probeNativeWindowOpacity()
+})
+
+onMessage(WebextEvent.setNativeWindowOpacity, async ({ data }) => {
+  if (!(await probeNativeWindowOpacity())) return false
+
+  const response = await sendNativeWindowOpacityMessage({
+    command: 'setOpacity',
+    ...data,
+  })
+  if (response.ok) nativeWindowOpacityAvailable = true
+  return !!response.ok
+})
+
+onMessage(WebextEvent.resetNativeWindowOpacity, async ({ data }) => {
+  if (!(await probeNativeWindowOpacity())) return false
+
+  const response = await sendNativeWindowOpacityMessage({
+    command: 'reset',
+    ...data,
+  })
+  if (response.ok) nativeWindowOpacityAvailable = true
+  return !!response.ok
+})
 
 onMessage(WebextEvent.closePIP, () => {
   setDocPIPTabId(null)

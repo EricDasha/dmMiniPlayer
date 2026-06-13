@@ -31,6 +31,8 @@ assets/temp.mp4
 .turbo
 .next
 .vercel
+.gocache/
+.gomodcache/
 
 # misc
 .DS_Store

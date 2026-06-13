@@ -31,6 +31,7 @@ declare global {
     }
     openSettingPanel: typeof openSettingPanel
     __LOCALE: Language
+    __dmmpNativeWindowOpacityAvailable?: boolean
     provider?: WebProvider
 
     // RestrictionTarget: {

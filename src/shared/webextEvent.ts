@@ -17,6 +17,9 @@ enum WebextEvent {
   moveDocPIPPos = 'moveDocPIPPos',
   resizeDocPIP = 'resizeDocPIP',
   updateDocPIPRect = 'updateDocPIPRect',
+  probeNativeWindowOpacity = 'probeNativeWindowOpacity',
+  setNativeWindowOpacity = 'setNativeWindowOpacity',
+  resetNativeWindowOpacity = 'resetNativeWindowOpacity',
 
   beforeStartPIP = 'beforeStartPIP',
   afterStartPIP = 'afterStartPIP',

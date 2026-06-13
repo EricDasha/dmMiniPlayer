@@ -2,6 +2,10 @@ import { ProtocolWithReturn } from 'webext-bridge'
 import { Props as DanmakuGetterProps } from '@pkgs/danmakuGetter/DanmakuGetter'
 import WebextEvent from './shared/webextEvent'
 import { DanmakuInitData } from './core/danmaku/DanmakuEngine'
+import type {
+  NativeWindowOpacityPayload,
+  NativeWindowOpacityTarget,
+} from './shared/nativeWindowOpacity'
 
 declare module 'webext-bridge' {
   export interface ProtocolMap {
@@ -49,6 +53,15 @@ declare module 'webext-bridge' {
     [WebextEvent.updateDocPIPRect]: {
       docPIPWidth: number
     } & Partial<{ left: number; top: number; width: number; height: number }>
+    [WebextEvent.probeNativeWindowOpacity]: ProtocolWithReturn<null, boolean>
+    [WebextEvent.setNativeWindowOpacity]: ProtocolWithReturn<
+      NativeWindowOpacityPayload,
+      boolean
+    >
+    [WebextEvent.resetNativeWindowOpacity]: ProtocolWithReturn<
+      NativeWindowOpacityTarget,
+      boolean
+    >
 
     [WebextEvent.afterStartPIP]: { width: number }
 

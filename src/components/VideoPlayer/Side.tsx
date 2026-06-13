@@ -88,21 +88,16 @@ const VideoPlayerSideInner: FC<Props> = observer((props) => {
     })
   }, [activeEl])
 
-  const windowOpacity = Math.max(
-    0.05,
-    Math.min(1, (configStore.viewportOpacity ?? 100) / 100),
-  )
-
   return (
     <div className="side-outer-container h-full">
       <div
         className="side-inner-container w-[var(--side-width)] h-full ml-auto p-[8px] overflow-hidden text-white text-sm backdrop-blur-[2px] bor-l-[#fff5] flex flex-col gap-[8px]"
         style={{
-          backgroundColor: `rgba(0, 0, 0, ${0.44 * windowOpacity})`,
+          backgroundColor: 'rgba(0, 0, 0, 0.44)',
         }}
       >
         <div
-          className="window-opacity-target flex-1 overflow-auto custom-scrollbar flex-col gap-[8px]"
+          className="flex-1 overflow-auto custom-scrollbar flex-col gap-[8px]"
           ref={containerRef}
         >
           {props.sideSwitcher.videoList.map((list, vi) => {

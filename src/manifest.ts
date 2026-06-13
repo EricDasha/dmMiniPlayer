@@ -31,6 +31,7 @@ export const manifest: chrome.runtime.ManifestV3 = {
     'storage',
     'contextMenus',
     'activeTab',
+    'nativeMessaging',
     // 'tabCapture',
   ],
   background: {

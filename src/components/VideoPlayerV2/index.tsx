@@ -134,20 +134,8 @@ const VideoPlayerV2Inner = observer(
     /**video插入替换位置 */
     const videoInsertRef = useRef<HTMLDivElement>(null)
     const videoRef = useRef<HTMLVideoElement>(null)
-    const underlayVideoRef = useRef<HTMLVideoElement>(null)
     /**这个专属于vp的ref，videoRef是专属于传入的webVideo */
     const inVpVideoRef = useRef<HTMLVideoElement>(null)
-    const [currentVideoEl, setCurrentVideoEl] =
-      useState<HTMLVideoElement | null>(null)
-    const [underlayStream, setUnderlayStream] = useState<MediaStream | null>(
-      null,
-    )
-    const viewportOpacity = Math.max(
-      5,
-      Math.min(100, configStore.viewportOpacity ?? 100),
-    )
-    const windowOpacity = viewportOpacity / 100
-    const enablePseudoTransparentUnderlay = windowOpacity < 1
     const windowOpacityStyle = {
       '--color-main': '#0669ff',
       '--area-height': '40px',
@@ -155,72 +143,12 @@ const VideoPlayerV2Inner = observer(
       '--box-shadow': '0 2px 4px rgba(55, 60, 68, 0.2)',
       '--c-text-main': 'rgba(0, 0, 0, 0.85)',
       '--side-width': configStore.sideWidth + 'px',
-      '--window-opacity': windowOpacity,
-      '--window-underlay-opacity':
-        windowOpacity >= 1
-          ? 0
-          : Math.min(0.92, 0.18 + (1 - windowOpacity) * 0.78),
-      '--window-underlay-dim': Math.min(
-        0.52,
-        0.12 + (1 - windowOpacity) * 0.36,
-      ),
-      '--window-underlay-blur': `${Math.round(
-        8 + (1 - windowOpacity) * 18,
-      )}px`,
     } as CSSProperties
 
     useEffect(() => {
       if (!videoPlayerRef.current) return
       videoPlayerRef.current.focus()
     }, [videoPlayerRef.current])
-
-    useEffect(() => {
-      if (!enablePseudoTransparentUnderlay || !currentVideoEl) {
-        setUnderlayStream(null)
-        return
-      }
-
-      const captureStream = (
-        currentVideoEl as HTMLVideoElement & {
-          captureStream?: () => MediaStream
-        }
-      ).captureStream
-
-      if (!captureStream) {
-        setUnderlayStream(null)
-        return
-      }
-
-      let stream: MediaStream | null = null
-      try {
-        stream = captureStream.call(currentVideoEl)
-        stream.getAudioTracks().forEach((track) => track.stop())
-        setUnderlayStream(new MediaStream(stream.getVideoTracks()))
-      } catch (error) {
-        console.warn(
-          '[dmMiniPlayer] pseudo transparent underlay unavailable',
-          error,
-        )
-        setUnderlayStream(null)
-      }
-
-      return () => {
-        stream?.getTracks().forEach((track) => track.stop())
-      }
-    }, [currentVideoEl, enablePseudoTransparentUnderlay])
-
-    useEffect(() => {
-      const underlayVideoEl = underlayVideoRef.current
-      if (!underlayVideoEl) return
-      underlayVideoEl.srcObject = underlayStream
-      if (!underlayStream) return
-      underlayVideoEl.play().catch(() => undefined)
-      return () => {
-        if (underlayVideoEl.srcObject === underlayStream) {
-          underlayVideoEl.srcObject = null
-        }
-      }
-    }, [underlayStream])
 
     useEffect(() => {
       if (!props.webVideo) return
@@ -336,7 +264,6 @@ const VideoPlayerV2Inner = observer(
     const updateVideoRef = useMemoizedFn((video: HTMLVideoElement) => {
       // console.trace('updateVideoRef', video)
       videoRef.current = video
-      setCurrentVideoEl((oldVideo) => (oldVideo === video ? oldVideo : video))
       if (!subtitleManager.initd) {
         subtitleManager.init(video)
       }
@@ -460,24 +387,8 @@ const VideoPlayerV2Inner = observer(
       >
         {keyboardTipsModalContext}
         <div
-          className="window-opacity-underlay absolute inset-0 z-0 overflow-hidden bg-black pointer-events-none"
-          aria-hidden
-        >
-          {underlayStream && (
-            <video
-              ref={underlayVideoRef}
-              className="window-opacity-underlay-video"
-              muted
-              playsInline
-              autoPlay
-            />
-          )}
-          <div className="window-opacity-underlay-fallback absolute inset-0"></div>
-          <div className="window-opacity-underlay-dim absolute inset-0"></div>
-        </div>
-        <div
           className={classNames(
-            'window-opacity-target video-container relative z-[1] h-full bg-black',
+            'video-container relative z-[1] h-full bg-black',
             !isLive && 'cursor-pointer',
           )}
           onClick={() => {
@@ -509,38 +420,6 @@ const VideoPlayerV2Inner = observer(
           <style>
             {`.video-player-v2.mouse-passthrough {
     pointer-events: none !important;
-  }
-  .video-player-v2 .window-opacity-target {
-    opacity: var(--window-opacity, 1);
-    transition: opacity .12s linear;
-    will-change: opacity;
-  }
-  .video-player-v2 .window-opacity-underlay {
-    opacity: var(--window-underlay-opacity, 0);
-    transition: opacity .18s ease;
-    contain: paint;
-  }
-  .video-player-v2 .window-opacity-underlay-video {
-    position: absolute !important;
-    inset: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    object-fit: cover !important;
-    filter: blur(var(--window-underlay-blur, 16px)) saturate(.92) brightness(.72) !important;
-    transform: scale(1.08) !important;
-    cursor: default !important;
-  }
-  .video-player-v2 .window-opacity-underlay-video + .window-opacity-underlay-fallback {
-    opacity: 0;
-  }
-  .video-player-v2 .window-opacity-underlay-fallback {
-    background:
-      radial-gradient(circle at 22% 18%, rgba(255,255,255,.18), transparent 34%),
-      radial-gradient(circle at 76% 72%, rgba(6,105,255,.18), transparent 38%),
-      linear-gradient(135deg, #05070b 0%, #111827 45%, #030712 100%);
-  }
-  .video-player-v2 .window-opacity-underlay-dim {
-    background: rgba(0, 0, 0, var(--window-underlay-dim, .2));
   }
 
   .video-player-v2.mouse-passthrough .video-action-area,

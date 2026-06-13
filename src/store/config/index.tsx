@@ -167,6 +167,11 @@ export const baseConfigMap = {
     label: t('settingPanel.viewportOpacity'),
     desc: t('settingPanel.viewportOpacityDesc'),
   }),
+  nativeWindowOpacityEnabled: config({
+    defaultValue: true,
+    label: t('settingPanel.nativeWindowOpacityEnabled' as any),
+    desc: t('settingPanel.nativeWindowOpacityEnabledDesc' as any),
+  }),
   videoNoBorder: config<videoBorderType>({
     type: 'group',
     label: t('settingPanel.videoNoBorder'),

@@ -33,15 +33,7 @@ const SubtitleSelectionInner: FC<Props> = observer((props) => {
           return console.log('No subtitle')
         }
       } else {
-        if (!subtitleManager.showSubtitle) {
-          subtitleManager.showSubtitle = true
-          subtitleManager.refresh({
-            keepActive: true,
-            useFirstWhenMissing: false,
-          })
-        } else {
-          subtitleManager.showSubtitle = false
-        }
+        subtitleManager.showSubtitle = !subtitleManager.showSubtitle
       }
     })
   })

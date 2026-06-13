@@ -1,6 +1,7 @@
 import { PIP_WINDOW_CONFIG } from '@root/shared/storeKey'
 import WebextEvent from '@root/shared/webextEvent'
 import configStore, { videoBorderType } from '@root/store/config'
+import type { NativeWindowOpacityTarget } from '@root/shared/nativeWindowOpacity'
 import { calculateNewDimensions, createElement } from '@root/utils'
 import { getDocPIPBorderSize } from '@root/utils/docPIP'
 import {
@@ -19,11 +20,106 @@ export default class DocPIPWebProvider extends WebProvider {
   protected override MiniPlayer = HtmlVideoPlayer
 
   pipWindow?: Window
+  private nativeWindowOpacityTargetTitle = ''
+  private nativeWindowOpacitySyncTimer: ReturnType<typeof setTimeout> | undefined
+  private nativeWindowOpacitySyncInFlight = false
+  private nativeWindowOpacitySyncPending = false
+  private nativeWindowOpacityPendingWindow?: Window
+
+  private getNativeWindowOpacityTarget(
+    pipWindow: Window,
+  ): NativeWindowOpacityTarget {
+    return {
+      title: this.nativeWindowOpacityTargetTitle,
+      titles: [
+        this.nativeWindowOpacityTargetTitle,
+        pipWindow.document.title,
+        document.title,
+        location.hostname,
+        location.host,
+      ].filter((title, index, list) => title && list.indexOf(title) === index),
+      bounds: {
+        left: pipWindow.screenLeft,
+        top: pipWindow.screenTop,
+        width: pipWindow.outerWidth,
+        height: pipWindow.outerHeight,
+      },
+    }
+  }
+
+  private async flushNativeWindowOpacity() {
+    const pipWindow = this.nativeWindowOpacityPendingWindow
+    if (!pipWindow) return
+    if (this.nativeWindowOpacitySyncInFlight) {
+      this.nativeWindowOpacitySyncPending = true
+      return
+    }
+
+    this.nativeWindowOpacitySyncInFlight = true
+    if (!configStore.nativeWindowOpacityEnabled) {
+      this.nativeWindowOpacitySyncInFlight = false
+      return
+    }
+
+    if (!window.__dmmpNativeWindowOpacityAvailable) {
+      window.__dmmpNativeWindowOpacityAvailable = await sendMessage(
+        WebextEvent.probeNativeWindowOpacity,
+        null,
+      ).catch(() => false)
+      if (!window.__dmmpNativeWindowOpacityAvailable) {
+        this.nativeWindowOpacitySyncInFlight = false
+        return
+      }
+    }
+
+    await sendMessage(WebextEvent.setNativeWindowOpacity, {
+      ...this.getNativeWindowOpacityTarget(pipWindow),
+      opacity: Math.max(5, Math.min(100, configStore.viewportOpacity ?? 100)),
+      smoothMs: 120,
+    }).then((ok) => {
+      if (!ok) {
+        console.warn(
+          '[dmMiniPlayer] native window opacity target not found',
+          this.getNativeWindowOpacityTarget(pipWindow),
+        )
+      }
+    }).catch(() => undefined)
+
+    this.nativeWindowOpacitySyncInFlight = false
+    if (this.nativeWindowOpacitySyncPending) {
+      this.nativeWindowOpacitySyncPending = false
+      this.syncNativeWindowOpacity(pipWindow)
+    }
+  }
+
+  private async syncNativeWindowOpacity(pipWindow: Window) {
+    this.nativeWindowOpacityPendingWindow = pipWindow
+    clearTimeout(this.nativeWindowOpacitySyncTimer)
+    this.nativeWindowOpacitySyncTimer = setTimeout(() => {
+      this.flushNativeWindowOpacity()
+    }, 45)
+  }
+
+  private async resetNativeWindowOpacity(pipWindow: Window) {
+    if (
+      !configStore.nativeWindowOpacityEnabled ||
+      !window.__dmmpNativeWindowOpacityAvailable
+    ) {
+      return
+    }
+
+    clearTimeout(this.nativeWindowOpacitySyncTimer)
+    await sendMessage(
+      WebextEvent.resetNativeWindowOpacity,
+      this.getNativeWindowOpacityTarget(pipWindow),
+    ).catch(() => undefined)
+  }
 
   override async onOpenPlayer() {
     // 在标题后添加 ' - PIP'
     const title = document.title
     const pipTitle = title + ' - PIP'
+    this.nativeWindowOpacityTargetTitle = pipTitle
     document.title = pipTitle
 
     // 获取应该有的docPIP宽高
@@ -50,6 +146,12 @@ export default class DocPIPWebProvider extends WebProvider {
     }
 
     await sendMessage(WebextEvent.beforeStartPIP, null)
+    window.__dmmpNativeWindowOpacityAvailable =
+      configStore.nativeWindowOpacityEnabled
+        ? await sendMessage(WebextEvent.probeNativeWindowOpacity, null).catch(
+            () => false,
+          )
+        : false
     await this.miniPlayer.init()
     const playerEl = this.miniPlayer.playerRootEl
     if (!playerEl) {
@@ -63,6 +165,7 @@ export default class DocPIPWebProvider extends WebProvider {
       height,
     })
     this.pipWindow = pipWindow
+    await this.syncNativeWindowOpacity(pipWindow)
 
     // 这里await会莫名其妙使webVideo被暂停
     sendMessage(WebextEvent.afterStartPIP, {
@@ -217,6 +320,7 @@ export default class DocPIPWebProvider extends WebProvider {
           pipDPR: pipWindow.devicePixelRatio,
         })
       }
+      this.resetNativeWindowOpacity(pipWindow)
       this.emit(PlayerEvent.close)
       pipWindow.removeEventListener('wheel', handleWheel, { capture: true })
       sendMessage(WebextEvent.closePIP, null)
@@ -226,7 +330,16 @@ export default class DocPIPWebProvider extends WebProvider {
     })
     pipWindow.addEventListener('resize', () => {
       this.emit(PlayerEvent.resize)
+      this.syncNativeWindowOpacity(pipWindow)
     })
+
+    this.addOnUnloadFn(
+      autorun(() => {
+        configStore.viewportOpacity
+        configStore.nativeWindowOpacityEnabled
+        this.syncNativeWindowOpacity(pipWindow)
+      }),
+    )
 
     this.on(PlayerEvent.close, () => {
       try {
