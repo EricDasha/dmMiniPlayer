@@ -29,8 +29,11 @@ const MousePassthroughButton: FC = observer(() => {
     event.preventDefault()
     event.stopPropagation()
 
-    updateConfig({ mousePassthrough: !configStore.mousePassthrough })
-    saveConfig()
+    const nextMousePassthrough = !configStore.mousePassthrough
+    updateConfig({ mousePassthrough: nextMousePassthrough })
+    if (!nextMousePassthrough) {
+      saveConfig()
+    }
   }
 
   return (

@@ -18,9 +18,14 @@ export type NativeWindowOpacityPayload = NativeWindowOpacityTarget & {
   smoothMs?: number
 }
 
+export type NativeWindowMousePassthroughPayload = NativeWindowOpacityTarget & {
+  enabled: boolean
+}
+
 export type NativeWindowOpacityHostMessage =
   | { command: 'ping' }
   | ({ command: 'setOpacity' } & NativeWindowOpacityPayload)
+  | ({ command: 'setMousePassthrough' } & NativeWindowMousePassthroughPayload)
   | ({ command: 'reset' } & NativeWindowOpacityTarget)
 
 export type NativeWindowOpacityHostResponse = {
@@ -29,4 +34,5 @@ export type NativeWindowOpacityHostResponse = {
   hwnd?: string
   title?: string
   alpha?: number
+  passthrough?: boolean
 }

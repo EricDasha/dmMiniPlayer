@@ -3,6 +3,7 @@ import { Props as DanmakuGetterProps } from '@pkgs/danmakuGetter/DanmakuGetter'
 import WebextEvent from './shared/webextEvent'
 import { DanmakuInitData } from './core/danmaku/DanmakuEngine'
 import type {
+  NativeWindowMousePassthroughPayload,
   NativeWindowOpacityPayload,
   NativeWindowOpacityTarget,
 } from './shared/nativeWindowOpacity'
@@ -60,6 +61,10 @@ declare module 'webext-bridge' {
     >
     [WebextEvent.resetNativeWindowOpacity]: ProtocolWithReturn<
       NativeWindowOpacityTarget,
+      boolean
+    >
+    [WebextEvent.setNativeMousePassthrough]: ProtocolWithReturn<
+      NativeWindowMousePassthroughPayload,
       boolean
     >
 

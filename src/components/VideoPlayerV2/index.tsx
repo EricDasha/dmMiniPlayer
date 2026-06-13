@@ -14,14 +14,9 @@ import useDebounceTimeoutCallback from '@root/hook/useDebounceTimeoutCallback'
 import useOpenIsolationModal from '@root/hook/useOpenIsolationModal'
 import useTargetEventListener from '@root/hook/useTargetEventListener'
 import PostMessageEvent from '@root/shared/postMessageEvent'
-import configStore, {
-  ReplacerDbClickAction,
-  saveConfig,
-  updateConfig,
-} from '@root/store/config'
+import configStore, { ReplacerDbClickAction } from '@root/store/config'
 import { isDocPIP, isIframe, ownerWindow, wait } from '@root/utils'
 import { hasParent } from '@root/utils/dom'
-import { t } from '@root/utils/i18n'
 import screenfull from '@root/utils/screenfull'
 import { Omit } from '@root/utils/typeUtils'
 import { postMessageToTop } from '@root/utils/windowMessages'
@@ -439,9 +434,7 @@ const VideoPlayerV2Inner = observer(
   .video-player-v2.mouse-passthrough .dmmp-keep-pointer *,
   .video-player-v2.mouse-passthrough .volume,
   .video-player-v2.mouse-passthrough .volume *,
-  .video-player-v2.mouse-passthrough .side-dragger,
-  .video-player-v2.mouse-passthrough .mouse-passthrough-exit,
-  .video-player-v2.mouse-passthrough .mouse-passthrough-exit * {
+  .video-player-v2.mouse-passthrough .side-dragger {
     pointer-events: auto !important;
   }`}
           </style>
@@ -570,26 +563,6 @@ const VideoPlayerV2Inner = observer(
 
         {/* 侧边操作栏 */}
         <VideoPlayerSide />
-
-        {configStore.mousePassthrough && (
-          <button
-            className={classNames(
-              'mouse-passthrough-exit absolute right-[56px] top-[8px] z-30',
-              'h-[28px] px-[10px] rounded-[4px] border border-[#fff7]',
-              'bg-[#0009] hover:bg-[#111] text-white text-[12px]',
-              'shadow-[0_2px_8px_#0008] transition-colors cursor-pointer',
-            )}
-            title={t('settingPanel.mousePassthrough' as any)}
-            onClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              updateConfig({ mousePassthrough: false })
-              saveConfig()
-            }}
-          >
-            {t('settingPanel.mousePassthroughExit' as any)}
-          </button>
-        )}
 
         {props.isReplacerMode && (
           <div

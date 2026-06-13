@@ -1,6 +1,10 @@
 import { PIP_WINDOW_CONFIG } from '@root/shared/storeKey'
 import WebextEvent from '@root/shared/webextEvent'
-import configStore, { videoBorderType } from '@root/store/config'
+import configStore, {
+  saveConfig,
+  updateConfig,
+  videoBorderType,
+} from '@root/store/config'
 import type { NativeWindowOpacityTarget } from '@root/shared/nativeWindowOpacity'
 import { calculateNewDimensions, createElement } from '@root/utils'
 import { getDocPIPBorderSize } from '@root/utils/docPIP'
@@ -115,7 +119,30 @@ export default class DocPIPWebProvider extends WebProvider {
     ).catch(() => undefined)
   }
 
+  private async setNativeMousePassthrough(
+    pipWindow: Window,
+    enabled = configStore.mousePassthrough,
+  ) {
+    if (!window.__dmmpNativeWindowOpacityAvailable) {
+      window.__dmmpNativeWindowOpacityAvailable = await sendMessage(
+        WebextEvent.probeNativeWindowOpacity,
+        null,
+      ).catch(() => false)
+      if (!window.__dmmpNativeWindowOpacityAvailable) return
+    }
+
+    await sendMessage(WebextEvent.setNativeMousePassthrough, {
+      ...this.getNativeWindowOpacityTarget(pipWindow),
+      enabled,
+    }).catch(() => undefined)
+  }
+
   override async onOpenPlayer() {
+    if (configStore.mousePassthrough) {
+      updateConfig({ mousePassthrough: false })
+      saveConfig()
+    }
+
     // 在标题后添加 ' - PIP'
     const title = document.title
     const pipTitle = title + ' - PIP'
@@ -320,6 +347,11 @@ export default class DocPIPWebProvider extends WebProvider {
           pipDPR: pipWindow.devicePixelRatio,
         })
       }
+      this.setNativeMousePassthrough(pipWindow, false)
+      if (configStore.mousePassthrough) {
+        updateConfig({ mousePassthrough: false })
+        saveConfig()
+      }
       this.resetNativeWindowOpacity(pipWindow)
       this.emit(PlayerEvent.close)
       pipWindow.removeEventListener('wheel', handleWheel, { capture: true })
@@ -331,6 +363,9 @@ export default class DocPIPWebProvider extends WebProvider {
     pipWindow.addEventListener('resize', () => {
       this.emit(PlayerEvent.resize)
       this.syncNativeWindowOpacity(pipWindow)
+      if (configStore.mousePassthrough) {
+        this.setNativeMousePassthrough(pipWindow, true)
+      }
     })
 
     this.addOnUnloadFn(
@@ -338,6 +373,14 @@ export default class DocPIPWebProvider extends WebProvider {
         configStore.viewportOpacity
         configStore.nativeWindowOpacityEnabled
         this.syncNativeWindowOpacity(pipWindow)
+      }),
+    )
+    this.addOnUnloadFn(
+      autorun(() => {
+        this.setNativeMousePassthrough(
+          pipWindow,
+          configStore.mousePassthrough,
+        )
       }),
     )
 

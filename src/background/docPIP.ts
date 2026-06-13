@@ -143,6 +143,17 @@ onMessage(WebextEvent.resetNativeWindowOpacity, async ({ data }) => {
   return !!response.ok
 })
 
+onMessage(WebextEvent.setNativeMousePassthrough, async ({ data }) => {
+  if (!(await probeNativeWindowOpacity())) return false
+
+  const response = await sendNativeWindowOpacityMessage({
+    command: 'setMousePassthrough',
+    ...data,
+  })
+  if (response.ok) nativeWindowOpacityAvailable = true
+  return !!response.ok
+})
+
 onMessage(WebextEvent.closePIP, () => {
   setDocPIPTabId(null)
 })

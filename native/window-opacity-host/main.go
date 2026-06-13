@@ -20,7 +20,13 @@ import (
 const (
 	gwlExStyle      = ^uintptr(19) // -20
 	wsExLayered     = 0x00080000
+	wsExTransparent = 0x00000020
 	lwaAlpha        = 0x00000002
+	swpNoSize       = 0x0001
+	swpNoMove       = 0x0002
+	swpNoZOrder     = 0x0004
+	swpNoActivate   = 0x0010
+	swpFrameChanged = 0x0020
 	minOpacity      = 5
 	maxOpacity      = 100
 	defaultSmoothMs = 120
@@ -36,6 +42,7 @@ var (
 	procIsWindowVisible            = user32.NewProc("IsWindowVisible")
 	procGetWindowLongPtrW          = user32.NewProc("GetWindowLongPtrW")
 	procSetWindowLongPtrW          = user32.NewProc("SetWindowLongPtrW")
+	procSetWindowPos               = user32.NewProc("SetWindowPos")
 	procGetLayeredWindowAttributes = user32.NewProc("GetLayeredWindowAttributes")
 	procSetLayeredWindowAttributes = user32.NewProc("SetLayeredWindowAttributes")
 )
@@ -54,14 +61,16 @@ type request struct {
 	Bounds   bounds   `json:"bounds"`
 	Opacity  int      `json:"opacity"`
 	SmoothMs int      `json:"smoothMs"`
+	Enabled  bool     `json:"enabled"`
 }
 
 type response struct {
-	OK    bool   `json:"ok"`
-	Error string `json:"error,omitempty"`
-	HWND  string `json:"hwnd,omitempty"`
-	Title string `json:"title,omitempty"`
-	Alpha int    `json:"alpha,omitempty"`
+	OK          bool   `json:"ok"`
+	Error       string `json:"error,omitempty"`
+	HWND        string `json:"hwnd,omitempty"`
+	Title       string `json:"title,omitempty"`
+	Alpha       int    `json:"alpha,omitempty"`
+	Passthrough bool   `json:"passthrough,omitempty"`
 }
 
 type rect struct {
@@ -119,11 +128,27 @@ func handle(req request) response {
 		return response{OK: true}
 	case "setOpacity":
 		return setOpacity(req, clamp(req.Opacity, minOpacity, maxOpacity))
+	case "setMousePassthrough":
+		return setMousePassthrough(req, req.Enabled)
 	case "reset":
-		return setOpacity(req, maxOpacity)
+		return resetWindow(req)
 	default:
 		return response{OK: false, Error: "unknown command"}
 	}
+}
+
+func resetWindow(req request) response {
+	win, ok, err := findBestWindow(req)
+	if err != nil {
+		return response{OK: false, Error: err.Error()}
+	}
+	if !ok {
+		return response{OK: false, Error: "target window not found"}
+	}
+	if err := setWindowMousePassthrough(win.hwnd, false); err != nil {
+		return response{OK: false, Error: err.Error()}
+	}
+	return setWindowOpacity(win, maxOpacity, req.SmoothMs)
 }
 
 func setOpacity(req request, opacity int) response {
@@ -134,13 +159,16 @@ func setOpacity(req request, opacity int) response {
 	if !ok {
 		return response{OK: false, Error: "target window not found"}
 	}
+	return setWindowOpacity(win, opacity, req.SmoothMs)
+}
 
+func setWindowOpacity(win windowInfo, opacity int, smoothMs int) response {
 	alpha := int(math.Round(float64(opacity) * 255 / 100))
 	alpha = clamp(alpha, 1, 255)
 
 	style, _, _ := procGetWindowLongPtrW.Call(win.hwnd, gwlExStyle)
 	procSetWindowLongPtrW.Call(win.hwnd, gwlExStyle, style|wsExLayered)
-	if err := animateWindowAlpha(win.hwnd, alpha, req.SmoothMs); err != nil {
+	if err := animateWindowAlpha(win.hwnd, alpha, smoothMs); err != nil {
 		return response{OK: false, Error: err.Error()}
 	}
 
@@ -150,6 +178,52 @@ func setOpacity(req request, opacity int) response {
 		Title: win.title,
 		Alpha: alpha,
 	}
+}
+
+func setMousePassthrough(req request, enabled bool) response {
+	win, ok, err := findBestWindow(req)
+	if err != nil {
+		return response{OK: false, Error: err.Error()}
+	}
+	if !ok {
+		return response{OK: false, Error: "target window not found"}
+	}
+
+	if err := setWindowMousePassthrough(win.hwnd, enabled); err != nil {
+		return response{OK: false, Error: err.Error()}
+	}
+
+	return response{
+		OK:          true,
+		HWND:        fmt.Sprintf("0x%x", win.hwnd),
+		Title:       win.title,
+		Passthrough: enabled,
+	}
+}
+
+func setWindowMousePassthrough(hwnd uintptr, enabled bool) error {
+	style, _, _ := procGetWindowLongPtrW.Call(hwnd, gwlExStyle)
+	nextStyle := style | wsExLayered
+	if enabled {
+		nextStyle |= wsExTransparent
+	} else {
+		nextStyle &^= wsExTransparent
+	}
+
+	procSetWindowLongPtrW.Call(hwnd, gwlExStyle, nextStyle)
+	ret, _, err := procSetWindowPos.Call(
+		hwnd,
+		0,
+		0,
+		0,
+		0,
+		0,
+		swpNoMove|swpNoSize|swpNoZOrder|swpNoActivate|swpFrameChanged,
+	)
+	if ret == 0 {
+		return err
+	}
+	return nil
 }
 
 func animateWindowAlpha(hwnd uintptr, targetAlpha int, smoothMs int) error {
