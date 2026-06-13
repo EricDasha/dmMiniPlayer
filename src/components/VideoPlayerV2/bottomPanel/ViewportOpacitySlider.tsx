@@ -37,8 +37,9 @@ const ViewportOpacitySlider: FC = observer(() => {
     event.preventDefault()
     event.stopPropagation()
 
-    const delta = event.deltaY < 0 ? 10 : -10
-    handleChange(opacity + delta)
+    const step = event.ctrlKey ? 10 : event.shiftKey ? 1 : 5
+    const direction = event.deltaY < 0 ? 1 : -1
+    handleChange(opacity + direction * step)
   }
 
   return (
