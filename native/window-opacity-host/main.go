@@ -181,12 +181,12 @@ func setWindowOpacity(win windowInfo, opacity int, smoothMs int) response {
 }
 
 func setMousePassthrough(req request, enabled bool) response {
-	win, ok, err := findBestWindow(req)
+	win, ok, err := findBestWindowByBounds(req)
 	if err != nil {
 		return response{OK: false, Error: err.Error()}
 	}
 	if !ok {
-		return response{OK: false, Error: "target window not found"}
+		return response{OK: false, Error: "target window not found by bounds"}
 	}
 
 	if err := setWindowMousePassthrough(win.hwnd, enabled); err != nil {
@@ -199,6 +199,32 @@ func setMousePassthrough(req request, enabled bool) response {
 		Title:       win.title,
 		Passthrough: enabled,
 	}
+}
+
+func findBestWindowByBounds(req request) (windowInfo, bool, error) {
+	if !hasBounds(req.Bounds) {
+		return windowInfo{}, false, nil
+	}
+
+	windows, err := enumWindows()
+	if err != nil {
+		return windowInfo{}, false, err
+	}
+
+	bestDistance := math.MaxInt
+	var best windowInfo
+	for _, win := range windows {
+		distance := windowBoundsDistance(win.bounds, req.Bounds)
+		if distance < bestDistance {
+			bestDistance = distance
+			best = win
+		}
+	}
+
+	if bestDistance > boundsTolerance*4 {
+		return windowInfo{}, false, nil
+	}
+	return best, true, nil
 }
 
 func setWindowMousePassthrough(hwnd uintptr, enabled bool) error {
@@ -377,11 +403,7 @@ func scoreWindow(win windowInfo, titles []string, target bounds) int {
 	}
 
 	if hasBounds(target) {
-		distance :=
-			abs(win.bounds.Left-target.Left) +
-				abs(win.bounds.Top-target.Top) +
-				abs(win.bounds.Width-target.Width) +
-				abs(win.bounds.Height-target.Height)
+		distance := windowBoundsDistance(win.bounds, target)
 		if distance <= boundsTolerance*4 {
 			score += 500 - distance
 		} else {
@@ -390,6 +412,13 @@ func scoreWindow(win windowInfo, titles []string, target bounds) int {
 	}
 
 	return score
+}
+
+func windowBoundsDistance(a bounds, b bounds) int {
+	return abs(a.Left-b.Left) +
+		abs(a.Top-b.Top) +
+		abs(a.Width-b.Width) +
+		abs(a.Height-b.Height)
 }
 
 func normalizeTitles(req request) []string {
