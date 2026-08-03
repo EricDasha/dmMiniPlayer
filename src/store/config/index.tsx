@@ -38,19 +38,13 @@ import config_specialWebsites from './specialWebsites'
 import config_danmaku from './danmaku'
 import { docPIPConfig } from './docPIP'
 import config_features from './features'
-
-type SettingsBackupFile = {
-  app?: string
-  schemaVersion?: number
-  exportedAt?: string
-  settings?: Record<string, unknown>
-  storage?: {
-    sync?: Record<string, unknown>
-    local?: Record<string, unknown>
-  }
-  localStorage?: Record<string, string | null>
-  [key: string]: unknown
-}
+import {
+  MAX_SETTINGS_BACKUP_BYTES,
+  parseSettingsBackup,
+  SETTINGS_BACKUP_SCHEMA_VERSION,
+  SettingsBackupError,
+} from './settingsBackup'
+import type { SettingsBackupData } from './settingsBackup'
 
 const SETTING_PANEL_LOCAL_STORAGE_KEY = '__settingPanel_config_save'
 const PLAYER_VOLUME_LOCAL_STORAGE_KEY = 'vp_volume'
@@ -84,20 +78,71 @@ const getLocalStorageSnapshot = () =>
     BACKUP_LOCAL_STORAGE_KEYS.map((key) => [key, localStorage.getItem(key)]),
   )
 
-const parseStorageRecord = (value: unknown): Record<string, unknown> => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-  return value as Record<string, unknown>
-}
-
 const restoreStorageArea = async (
   area: Browser.Storage.StorageArea,
-  value: unknown,
+  value: Record<string, unknown>,
 ) => {
-  const data = parseStorageRecord(value)
   await area.clear()
-  if (Object.keys(data).length) {
-    await area.set(data)
+  if (Object.keys(value).length) {
+    await area.set(value)
   }
+}
+
+const restoreLocalStorage = (value: Record<string, string | null>) => {
+  for (const key of BACKUP_LOCAL_STORAGE_KEYS) {
+    if (!(key in value)) continue
+    const nextValue = value[key]
+    if (nextValue === null) {
+      localStorage.removeItem(key)
+    } else {
+      localStorage.setItem(key, nextValue)
+    }
+  }
+}
+
+const createBackupData = async (): Promise<SettingsBackupData> => ({
+  app: 'dmMiniPlayer',
+  schemaVersion: SETTINGS_BACKUP_SCHEMA_VERSION,
+  exportedAt: new Date().toISOString(),
+  extensionVersion: isPluginEnv
+    ? Browser.runtime.getManifest().version
+    : undefined,
+  settings: getSettingSnapshot(),
+  storage: await getStorageSnapshot(),
+  localStorage: getLocalStorageSnapshot(),
+})
+
+const downloadBackup = (data: SettingsBackupData, prefix: string) => {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: 'application/json',
+  })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  const timestamp = new Date()
+    .toISOString()
+    .replace(/[:.]/g, '-')
+    .replace('T', '_')
+    .replace('Z', '')
+  link.href = url
+  link.download = `${prefix}-${timestamp}.json`
+  link.style.display = 'none'
+  document.body.append(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+const getImportErrorMessage = (error: unknown) => {
+  if (!(error instanceof SettingsBackupError)) {
+    return t('settingPanel.importRestoreError' as any)
+  }
+  const keyByCode = {
+    invalid: 'settingPanel.importError',
+    newerVersion: 'settingPanel.importNewerVersionError',
+    tooLarge: 'settingPanel.importTooLargeError',
+    wrongApp: 'settingPanel.importWrongAppError',
+  } as const
+  return t(keyByCode[error.code] as any)
 }
 
 if (isDev) {
@@ -324,6 +369,7 @@ export const baseConfigMap = {
   exportImportSettings: config({
     defaultValue: '',
     label: t('settingPanel.exportImportSettings' as any),
+    desc: t('settingPanel.exportImportSettingsDesc' as any),
     render: () => {
       const btnStyle = {
         padding: '4px 12px',
@@ -334,28 +380,12 @@ export const baseConfigMap = {
         background: '#f5f5f5',
       }
       const handleExport = async () => {
-        const settings = getSettingSnapshot()
-        const storage = await getStorageSnapshot()
-        const localStorage = getLocalStorageSnapshot()
-        const data = JSON.stringify(
-          {
-            app: 'dmMiniPlayer',
-            schemaVersion: 2,
-            exportedAt: new Date().toISOString(),
-            settings,
-            storage,
-            localStorage,
-          },
-          null,
-          2,
-        )
-        const blob = new Blob([data], { type: 'application/json' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `dmMiniPlayer-settings-${new Date().toISOString().slice(0, 10)}.json`
-        a.click()
-        URL.revokeObjectURL(url)
+        try {
+          downloadBackup(await createBackupData(), 'dmMiniPlayer-backup')
+        } catch (error) {
+          console.error('[settings backup] export failed', error)
+          alert(t('settingPanel.exportError' as any))
+        }
       }
       const handleImport = () => {
         const input = document.createElement('input')
@@ -364,63 +394,57 @@ export const baseConfigMap = {
         input.onchange = async (e) => {
           const file = (e.target as HTMLInputElement).files?.[0]
           if (!file) return
+          let rollbackData: SettingsBackupData | undefined
+          let previousSettings: Record<string, unknown> | undefined
           try {
+            if (file.size > MAX_SETTINGS_BACKUP_BYTES) {
+              throw new SettingsBackupError('tooLarge')
+            }
             const text = await file.text()
-            const data = JSON.parse(text) as SettingsBackupFile
-            if (data?.app && data.app !== 'dmMiniPlayer') {
-              throw new Error('invalid app')
-            }
-
-            const rawSettings = data.settings ?? data
-            if (typeof rawSettings !== 'object' || rawSettings === null) {
-              throw new Error('invalid')
-            }
-            const importSettings = rawSettings as Record<string, unknown>
-            const settings = Object.fromEntries(
-              Object.keys(baseConfigMap)
-                .filter((key) => key in importSettings)
-                .map((key) => [
-                  key,
-                  importSettings[key],
-                ]),
+            const plan = parseSettingsBackup(
+              text,
+              Object.keys(baseConfigMap),
+              BACKUP_LOCAL_STORAGE_KEYS,
             )
-            if (!Object.keys(settings).length) throw new Error('invalid')
+            const settings = plan.settings
+            const storageItemCount =
+              Object.keys(plan.storage.sync ?? {}).length +
+              Object.keys(plan.storage.local ?? {}).length
+            const summary = t('settingPanel.importSummary' as any)
+              .replace('{settings}', String(Object.keys(settings).length))
+              .replace('{storage}', String(storageItemCount))
+              .replace('{ignored}', String(plan.ignoredSettings))
 
-            if (!confirm(t('settingPanel.importConfirm' as any))) {
+            if (
+              !confirm(
+                `${summary}\n\n${t('settingPanel.importConfirm' as any)}`,
+              )
+            ) {
               return
             }
 
-            const hasStorageBackup = !!data.storage
-            if (hasStorageBackup) {
-              const nextSync = {
-                ...parseStorageRecord(data.storage?.sync),
-              }
-              const nextLocal = {
-                ...parseStorageRecord(data.storage?.local),
-              }
+            previousSettings = getSettingSnapshot()
+            rollbackData = await createBackupData()
+            downloadBackup(rollbackData, 'dmMiniPlayer-before-restore')
 
-              if (!nextSync[DM_MINI_PLAYER_CONFIG]) {
+            if (plan.storage.sync !== undefined) {
+              const nextSync = { ...plan.storage.sync }
+              if (Object.keys(settings).length) {
                 nextSync[DM_MINI_PLAYER_CONFIG] = settings
               }
-
-              await Promise.all([
-                restoreStorageArea(Browser.storage.sync, nextSync),
-                restoreStorageArea(Browser.storage.local, nextLocal),
-              ])
-            } else if (isPluginEnv) {
+              await restoreStorageArea(Browser.storage.sync, nextSync)
+            } else if (isPluginEnv && Object.keys(settings).length) {
               await setBrowserSyncStorage(DM_MINI_PLAYER_CONFIG, settings)
             }
+            if (plan.storage.local !== undefined) {
+              await restoreStorageArea(
+                Browser.storage.local,
+                plan.storage.local,
+              )
+            }
+            restoreLocalStorage(plan.localStorage)
 
-            Object.entries(data.localStorage ?? {}).forEach(([key, value]) => {
-              if (!BACKUP_LOCAL_STORAGE_KEYS.includes(key)) return
-              if (value === null) {
-                localStorage.removeItem(key)
-              } else {
-                localStorage.setItem(key, value)
-              }
-            })
-
-            if (!isPluginEnv) {
+            if (!isPluginEnv && Object.keys(settings).length) {
               localStorage.setItem(
                 SETTING_PANEL_LOCAL_STORAGE_KEY,
                 JSON.stringify(settings),
@@ -438,11 +462,33 @@ export const baseConfigMap = {
               )
             }
 
-            _updateConfig(settings)
+            if (Object.keys(settings).length) _updateConfig(settings)
             alert(t('settingPanel.importSuccess'))
             setTimeout(() => location.reload(), 100)
-          } catch {
-            alert(t('settingPanel.importError'))
+          } catch (error) {
+            console.error('[settings backup] restore failed', error)
+            if (rollbackData) {
+              try {
+                await restoreStorageArea(
+                  Browser.storage.sync,
+                  rollbackData.storage.sync,
+                )
+                await restoreStorageArea(
+                  Browser.storage.local,
+                  rollbackData.storage.local,
+                )
+                restoreLocalStorage(rollbackData.localStorage)
+                if (previousSettings) _updateConfig(previousSettings)
+              } catch (rollbackError) {
+                console.error(
+                  '[settings backup] rollback failed',
+                  rollbackError,
+                )
+                alert(t('settingPanel.importRollbackError' as any))
+                return
+              }
+            }
+            alert(getImportErrorMessage(error))
           }
         }
         input.click()

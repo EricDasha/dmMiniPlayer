@@ -6,6 +6,7 @@ Fixes:
 4. Added current PiP resolution display, manual width/height controls, and current-aspect-ratio locking
 5. Fixed mouse passthrough and native opacity regressions; activating PiP from the taskbar now restores mouse input
 6. Added Windows native-host detection, missing-host impact guidance, install instructions, a do-not-remind option, recheck, and uninstall controls
+7. Improved settings backup and restore with schema validation, an import summary, a pre-restore safety backup, automatic rollback, and safe handling of partial storage backups
 
 ## v0.6.60
 Temporary fix for an issue where minimizing the browser could pause video for some users on Bilibili
