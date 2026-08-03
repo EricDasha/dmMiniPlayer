@@ -50,6 +50,7 @@ export const attachPIPWindowControls = (
   }
   let autoDockTimer: ReturnType<typeof setTimeout> | undefined
   let autoDockAnimationGeneration = 0
+  let pointerInsidePIP = false
   let aspectResizeTimer: ReturnType<typeof setTimeout> | undefined
   let aspectResizeInFlight = false
   let lockedAspectRatio = pipWindow.innerWidth / pipWindow.innerHeight
@@ -132,10 +133,27 @@ export const attachPIPWindowControls = (
   }
 
   const handlePointerEnter = () => {
+    pointerInsidePIP = true
     clearTimeout(autoDockTimer)
     restoreAutoDock()
   }
-  const handlePointerLeave = () => {
+  const handlePointerLeave = (event: PointerEvent) => {
+    pointerInsidePIP = false
+    clearTimeout(autoDockTimer)
+
+    // document 的 pointerleave 也会在鼠标移到 PiP 原生标题栏时触发。
+    // 该区域仍属于窗口，不能像之前一样误判为“离开窗口”并立即隐藏。
+    const pointerStillInsideNativeWindow =
+      event.screenX >= pipWindow.screenLeft &&
+      event.screenX < pipWindow.screenLeft + pipWindow.outerWidth &&
+      event.screenY >= pipWindow.screenTop &&
+      event.screenY < pipWindow.screenTop + pipWindow.outerHeight
+    if (pointerStillInsideNativeWindow) return
+
+    autoDockTimer = setTimeout(dockToNearestVerticalEdge, AUTO_DOCK_DELAY)
+  }
+  const handleBlur = () => {
+    if (pointerInsidePIP) return
     clearTimeout(autoDockTimer)
     autoDockTimer = setTimeout(dockToNearestVerticalEdge, AUTO_DOCK_DELAY)
   }
@@ -185,6 +203,7 @@ export const attachPIPWindowControls = (
 
   pipWindow.document.addEventListener('pointerenter', handlePointerEnter)
   pipWindow.document.addEventListener('pointerleave', handlePointerLeave)
+  pipWindow.addEventListener('blur', handleBlur)
   pipWindow.addEventListener('resize', handleAspectRatioResize)
 
   const disposeLockAspectRatio = autorun(() => {
@@ -225,12 +244,14 @@ export const attachPIPWindowControls = (
           ? pipWindow.screenTop
           : autoDockState.top,
     }),
+    isPointerInside: () => pointerInsidePIP,
     dispose: () => {
       disposeLockAspectRatio()
       disposeAutoDock()
       disposeExclusiveModes()
       pipWindow.document.removeEventListener('pointerenter', handlePointerEnter)
       pipWindow.document.removeEventListener('pointerleave', handlePointerLeave)
+      pipWindow.removeEventListener('blur', handleBlur)
       pipWindow.removeEventListener('resize', handleAspectRatioResize)
       clearTimeout(autoDockTimer)
       clearTimeout(aspectResizeTimer)

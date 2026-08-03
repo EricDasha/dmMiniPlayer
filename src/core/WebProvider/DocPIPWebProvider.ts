@@ -200,12 +200,19 @@ export default class DocPIPWebProvider extends WebProvider {
     const pipWindowControls = attachPIPWindowControls(pipWindow, () => {
       this.syncNativeWindowOpacity(pipWindow)
     })
-    const restoreMouseInputOnFocus = () => {
-      if (!configStore.mousePassthrough) return
-      updateConfig({ mousePassthrough: false })
+    const restoreWindowInteractionOnFocus = () => {
+      const cancelMousePassthrough = configStore.mousePassthrough
+      const cancelAutoDock =
+        configStore.autoDockPIP && !pipWindowControls.isPointerInside()
+      if (!cancelMousePassthrough && !cancelAutoDock) return
+
+      updateConfig({
+        ...(cancelMousePassthrough ? { mousePassthrough: false } : {}),
+        ...(cancelAutoDock ? { autoDockPIP: false } : {}),
+      })
       saveConfig()
     }
-    pipWindow.addEventListener('focus', restoreMouseInputOnFocus)
+    pipWindow.addEventListener('focus', restoreWindowInteractionOnFocus)
 
     // 这里await会莫名其妙使webVideo被暂停
     sendMessage(WebextEvent.afterStartPIP, {
@@ -369,7 +376,7 @@ export default class DocPIPWebProvider extends WebProvider {
       this.resetNativeWindowOpacity(pipWindow)
       this.emit(PlayerEvent.close)
       pipWindow.removeEventListener('wheel', handleWheel, { capture: true })
-      pipWindow.removeEventListener('focus', restoreMouseInputOnFocus)
+      pipWindow.removeEventListener('focus', restoreWindowInteractionOnFocus)
       pipWindowControls.dispose()
       sendMessage(WebextEvent.closePIP, null)
 
