@@ -11,6 +11,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -18,23 +19,27 @@ import (
 )
 
 const (
-	gwlExStyle      = ^uintptr(19) // -20
-	wsExLayered     = 0x00080000
-	wsExTransparent = 0x00000020
-	lwaAlpha        = 0x00000002
-	swpNoSize       = 0x0001
-	swpNoMove       = 0x0002
-	swpNoZOrder     = 0x0004
-	swpNoActivate   = 0x0010
-	swpFrameChanged = 0x0020
-	minOpacity      = 5
-	maxOpacity      = 100
-	defaultSmoothMs = 120
-	boundsTolerance = 48
+	gwlExStyle        = ^uintptr(19) // -20
+	wsExLayered       = 0x00080000
+	wsExTransparent   = 0x00000020
+	lwaAlpha          = 0x00000002
+	swpNoSize         = 0x0001
+	swpNoMove         = 0x0002
+	swpNoZOrder       = 0x0004
+	swpNoActivate     = 0x0010
+	swpFrameChanged   = 0x0020
+	minOpacity        = 5
+	maxOpacity        = 100
+	defaultSmoothMs   = 120
+	boundsTolerance   = 48
+	hostName          = "com.dmminiplayer.window_opacity"
+	hkeyCurrentUser   = 0x80000001
+	errorFileNotFound = 2
 )
 
 var (
 	user32                         = syscall.NewLazyDLL("user32.dll")
+	advapi32                       = syscall.NewLazyDLL("advapi32.dll")
 	procEnumWindows                = user32.NewProc("EnumWindows")
 	procGetWindowTextW             = user32.NewProc("GetWindowTextW")
 	procGetWindowTextLengthW       = user32.NewProc("GetWindowTextLengthW")
@@ -45,6 +50,7 @@ var (
 	procSetWindowPos               = user32.NewProc("SetWindowPos")
 	procGetLayeredWindowAttributes = user32.NewProc("GetLayeredWindowAttributes")
 	procSetLayeredWindowAttributes = user32.NewProc("SetLayeredWindowAttributes")
+	procRegDeleteTreeW             = advapi32.NewProc("RegDeleteTreeW")
 )
 
 type bounds struct {
@@ -71,6 +77,7 @@ type response struct {
 	Title       string `json:"title,omitempty"`
 	Alpha       int    `json:"alpha,omitempty"`
 	Passthrough bool   `json:"passthrough,omitempty"`
+	Uninstalled bool   `json:"uninstalled,omitempty"`
 }
 
 type rect struct {
@@ -130,11 +137,44 @@ func handle(req request) response {
 		return setOpacity(req, clamp(req.Opacity, minOpacity, maxOpacity))
 	case "setMousePassthrough":
 		return setMousePassthrough(req, req.Enabled)
+	case "uninstall":
+		return uninstallNativeHost()
 	case "reset":
 		return resetWindow(req)
 	default:
 		return response{OK: false, Error: "unknown command"}
 	}
+}
+
+func uninstallNativeHost() response {
+	registryKeys := []string{
+		`Software\Google\Chrome\NativeMessagingHosts\` + hostName,
+		`Software\Microsoft\Edge\NativeMessagingHosts\` + hostName,
+	}
+	for _, key := range registryKeys {
+		ret, _, err := procRegDeleteTreeW.Call(
+			hkeyCurrentUser,
+			uintptr(unsafe.Pointer(utf16Ptr(key))),
+		)
+		if ret != 0 && ret != errorFileNotFound {
+			return response{OK: false, Error: err.Error()}
+		}
+	}
+
+	exePath, err := os.Executable()
+	if err == nil {
+		manifestPath := filepath.Join(filepath.Dir(exePath), hostName+".json")
+		if removeErr := os.Remove(manifestPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			return response{OK: false, Error: removeErr.Error()}
+		}
+	}
+
+	return response{OK: true, Uninstalled: true}
+}
+
+func utf16Ptr(value string) *uint16 {
+	ptr, _ := syscall.UTF16PtrFromString(value)
+	return ptr
 }
 
 func resetWindow(req request) response {

@@ -15,8 +15,10 @@ import {
 import { sendMessage } from 'webext-bridge/content-script'
 import { MovePIPAfterOpenType, Position } from '@root/types/config'
 import { autorun } from 'mobx'
+import { showNativeHostMissingNotice } from '@root/components/NativeHostSettings'
 import { HtmlVideoPlayer } from '../VideoPlayer/HtmlVideoPlayer'
 import { PlayerEvent } from '../event'
+import { attachPIPWindowControls } from './docPIPWindowControls'
 import { WebProvider } from '.'
 
 export default class DocPIPWebProvider extends WebProvider {
@@ -25,7 +27,9 @@ export default class DocPIPWebProvider extends WebProvider {
 
   pipWindow?: Window
   private nativeWindowOpacityTargetTitle = ''
-  private nativeWindowOpacitySyncTimer: ReturnType<typeof setTimeout> | undefined
+  private nativeWindowOpacitySyncTimer:
+    | ReturnType<typeof setTimeout>
+    | undefined
   private nativeWindowOpacitySyncInFlight = false
   private nativeWindowOpacitySyncPending = false
   private nativeWindowOpacityPendingWindow?: Window
@@ -80,14 +84,16 @@ export default class DocPIPWebProvider extends WebProvider {
       ...this.getNativeWindowOpacityTarget(pipWindow),
       opacity: Math.max(5, Math.min(100, configStore.viewportOpacity ?? 100)),
       smoothMs: 120,
-    }).then((ok) => {
-      if (!ok) {
-        console.warn(
-          '[dmMiniPlayer] native window opacity target not found',
-          this.getNativeWindowOpacityTarget(pipWindow),
-        )
-      }
-    }).catch(() => undefined)
+    })
+      .then((ok) => {
+        if (!ok) {
+          console.warn(
+            '[dmMiniPlayer] native window opacity target not found',
+            this.getNativeWindowOpacityTarget(pipWindow),
+          )
+        }
+      })
+      .catch(() => undefined)
 
     this.nativeWindowOpacitySyncInFlight = false
     if (this.nativeWindowOpacitySyncPending) {
@@ -138,8 +144,8 @@ export default class DocPIPWebProvider extends WebProvider {
   }
 
   override async onOpenPlayer() {
-    if (configStore.mousePassthrough) {
-      updateConfig({ mousePassthrough: false })
+    if (configStore.mousePassthrough || configStore.autoDockPIP) {
+      updateConfig({ mousePassthrough: false, autoDockPIP: false })
       saveConfig()
     }
 
@@ -173,12 +179,10 @@ export default class DocPIPWebProvider extends WebProvider {
     }
 
     await sendMessage(WebextEvent.beforeStartPIP, null)
-    window.__dmmpNativeWindowOpacityAvailable =
-      configStore.nativeWindowOpacityEnabled
-        ? await sendMessage(WebextEvent.probeNativeWindowOpacity, null).catch(
-            () => false,
-          )
-        : false
+    window.__dmmpNativeWindowOpacityAvailable = await sendMessage(
+      WebextEvent.probeNativeWindowOpacity,
+      { force: true },
+    ).catch(() => false)
     await this.miniPlayer.init()
     const playerEl = this.miniPlayer.playerRootEl
     if (!playerEl) {
@@ -193,6 +197,15 @@ export default class DocPIPWebProvider extends WebProvider {
     })
     this.pipWindow = pipWindow
     await this.syncNativeWindowOpacity(pipWindow)
+    const pipWindowControls = attachPIPWindowControls(pipWindow, () => {
+      this.syncNativeWindowOpacity(pipWindow)
+    })
+    const restoreMouseInputOnFocus = () => {
+      if (!configStore.mousePassthrough) return
+      updateConfig({ mousePassthrough: false })
+      saveConfig()
+    }
+    pipWindow.addEventListener('focus', restoreMouseInputOnFocus)
 
     // 这里await会莫名其妙使webVideo被暂停
     sendMessage(WebextEvent.afterStartPIP, {
@@ -338,23 +351,26 @@ export default class DocPIPWebProvider extends WebProvider {
           pipWindow.innerHeight + configStore.saveHeightOnDocPIPCloseOffset,
         ]
         console.log('[docPIP_WH] save width and height', { width, height })
+        const savedPosition = pipWindowControls.getSavedPosition()
         setBrowserSyncStorage(PIP_WINDOW_CONFIG, {
           height,
           width,
-          left: pipWindow.screenLeft,
-          top: pipWindow.screenTop,
+          left: savedPosition.left,
+          top: savedPosition.top,
           mainDPR: window.devicePixelRatio,
           pipDPR: pipWindow.devicePixelRatio,
         })
       }
       this.setNativeMousePassthrough(pipWindow, false)
-      if (configStore.mousePassthrough) {
-        updateConfig({ mousePassthrough: false })
+      if (configStore.mousePassthrough || configStore.autoDockPIP) {
+        updateConfig({ mousePassthrough: false, autoDockPIP: false })
         saveConfig()
       }
       this.resetNativeWindowOpacity(pipWindow)
       this.emit(PlayerEvent.close)
       pipWindow.removeEventListener('wheel', handleWheel, { capture: true })
+      pipWindow.removeEventListener('focus', restoreMouseInputOnFocus)
+      pipWindowControls.dispose()
       sendMessage(WebextEvent.closePIP, null)
 
       // 恢复原始标题
@@ -377,13 +393,9 @@ export default class DocPIPWebProvider extends WebProvider {
     )
     this.addOnUnloadFn(
       autorun(() => {
-        this.setNativeMousePassthrough(
-          pipWindow,
-          configStore.mousePassthrough,
-        )
+        this.setNativeMousePassthrough(pipWindow, configStore.mousePassthrough)
       }),
     )
-
     this.on(PlayerEvent.close, () => {
       try {
         pipWindow.close()
@@ -391,6 +403,9 @@ export default class DocPIPWebProvider extends WebProvider {
     })
 
     pipWindow.document.body.appendChild(playerEl)
+    if (!window.__dmmpNativeWindowOpacityAvailable) {
+      showNativeHostMissingNotice(pipWindow)
+    }
 
     // docPIP有自带的样式，需要覆盖掉。根节点保持透明，窗口白化由播放器伪透明底图兜底。
     const docPIPRootStyle = createElement('style', {

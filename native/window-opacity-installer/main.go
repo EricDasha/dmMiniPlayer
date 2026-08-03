@@ -16,12 +16,13 @@ import (
 const (
 	hostName = "com.dmminiplayer.window_opacity"
 
-	extIDEditID      = 1001
-	chromeCheckID    = 1002
-	edgeCheckID      = 1003
-	installButtonID  = 1004
-	statusStaticID   = 1005
-	openFolderButton = 1006
+	extIDEditID       = 1001
+	chromeCheckID     = 1002
+	edgeCheckID       = 1003
+	installButtonID   = 1004
+	statusStaticID    = 1005
+	openFolderButton  = 1006
+	uninstallButtonID = 1007
 
 	wsOverlappedWindow = 0x00CF0000
 	wsVisible          = 0x10000000
@@ -44,9 +45,10 @@ const (
 
 	swShow = 5
 
-	hkeyCurrentUser = 0x80000001
-	keySetValue     = 0x0002
-	regSZ           = 1
+	hkeyCurrentUser   = 0x80000001
+	keySetValue       = 0x0002
+	regSZ             = 1
+	errorFileNotFound = 2
 )
 
 var (
@@ -69,6 +71,7 @@ var (
 	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 	procRegCreateKeyExW  = advapi32.NewProc("RegCreateKeyExW")
 	procRegSetValueExW   = advapi32.NewProc("RegSetValueExW")
+	procRegDeleteTreeW   = advapi32.NewProc("RegDeleteTreeW")
 	procRegCloseKey      = advapi32.NewProc("RegCloseKey")
 	procShellExecuteW    = shell32.NewProc("ShellExecuteW")
 
@@ -182,6 +185,8 @@ func wndProc(hwnd uintptr, message uint32, wParam, lParam uintptr) uintptr {
 			installFromGUI()
 		case openFolderButton:
 			openBuildFolder()
+		case uninstallButtonID:
+			uninstallFromGUI()
 		}
 		return 0
 	case wmDestroy:
@@ -199,8 +204,9 @@ func createControls(hwnd uintptr) {
 	edgeCheck = createControl("BUTTON", "Edge", wsChild|wsVisible|wsTabStop|bsAutoCheckbox, 230, 58, 120, 24, hwnd, edgeCheckID)
 	procSendMessageW.Call(chromeCheck, bmSetCheck, bstChecked, 0)
 	procSendMessageW.Call(edgeCheck, bmSetCheck, bstChecked, 0)
-	createControl("BUTTON", "安装 / 更新", wsChild|wsVisible|wsTabStop|bsDefPushButton, 98, 96, 140, 32, hwnd, installButtonID)
-	createControl("BUTTON", "打开工具目录", wsChild|wsVisible|wsTabStop, 250, 96, 140, 32, hwnd, openFolderButton)
+	createControl("BUTTON", "安装 / 更新", wsChild|wsVisible|wsTabStop|bsDefPushButton, 48, 96, 130, 32, hwnd, installButtonID)
+	createControl("BUTTON", "卸载", wsChild|wsVisible|wsTabStop, 190, 96, 130, 32, hwnd, uninstallButtonID)
+	createControl("BUTTON", "打开工具目录", wsChild|wsVisible|wsTabStop, 332, 96, 150, 32, hwnd, openFolderButton)
 	statusStatic = createControl("STATIC", "先在 chrome://extensions/ 复制 unpacked 扩展 ID。", wsChild|wsVisible|ssLeft, 18, 148, 500, 64, hwnd, statusStaticID)
 }
 
@@ -288,6 +294,59 @@ func installNativeHost(extensionID string, targets []string) error {
 		}
 		if err := setRegistryDefaultValue(key, manifestPath); err != nil {
 			return fmt.Errorf("%s registry: %w", target, err)
+		}
+	}
+	return nil
+}
+
+func uninstallFromGUI() {
+	targets := []string{}
+	if isChecked(chromeCheck) {
+		targets = append(targets, "Chrome")
+	}
+	if isChecked(edgeCheck) {
+		targets = append(targets, "Edge")
+	}
+	if len(targets) == 0 {
+		setStatus("至少选择 Chrome 或 Edge。")
+		return
+	}
+
+	setStatus("卸载中，请稍等……")
+	go func() {
+		if err := uninstallNativeHost(targets); err != nil {
+			setStatus("卸载失败：" + err.Error())
+			return
+		}
+		setStatus("卸载完成。请重启所选浏览器；若不再使用，可删除当前工具目录。")
+	}()
+}
+
+func uninstallNativeHost(targets []string) error {
+	for _, target := range targets {
+		var key string
+		switch target {
+		case "Chrome":
+			key = `Software\Google\Chrome\NativeMessagingHosts\` + hostName
+		case "Edge":
+			key = `Software\Microsoft\Edge\NativeMessagingHosts\` + hostName
+		}
+		ret, _, err := procRegDeleteTreeW.Call(
+			hkeyCurrentUser,
+			uintptr(unsafe.Pointer(utf16Ptr(key))),
+		)
+		if ret != 0 && ret != errorFileNotFound {
+			return fmt.Errorf("%s registry: %w", target, err)
+		}
+	}
+
+	if len(targets) == 2 {
+		exePath, err := os.Executable()
+		if err == nil {
+			manifestPath := filepath.Join(filepath.Dir(exePath), hostName+".json")
+			if removeErr := os.Remove(manifestPath); removeErr != nil && !os.IsNotExist(removeErr) {
+				return removeErr
+			}
 		}
 	}
 	return nil

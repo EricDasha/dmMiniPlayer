@@ -1,4 +1,6 @@
 export const NATIVE_WINDOW_OPACITY_HOST = 'com.dmminiplayer.window_opacity'
+export const NATIVE_WINDOW_HOST_INSTALL_GUIDE =
+  'https://github.com/EricDasha/dmMiniPlayer/blob/happy/aggressive-window-transparency/docs/native-window-opacity.md'
 
 export type NativeWindowBounds = {
   left: number
@@ -24,6 +26,7 @@ export type NativeWindowMousePassthroughPayload = NativeWindowOpacityTarget & {
 
 export type NativeWindowOpacityHostMessage =
   | { command: 'ping' }
+  | { command: 'uninstall' }
   | ({ command: 'setOpacity' } & NativeWindowOpacityPayload)
   | ({ command: 'setMousePassthrough' } & NativeWindowMousePassthroughPayload)
   | ({ command: 'reset' } & NativeWindowOpacityTarget)
@@ -35,4 +38,5 @@ export type NativeWindowOpacityHostResponse = {
   title?: string
   alpha?: number
   passthrough?: boolean
+  uninstalled?: boolean
 }

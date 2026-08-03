@@ -30,7 +30,10 @@ const MousePassthroughButton: FC = observer(() => {
     event.stopPropagation()
 
     const nextMousePassthrough = !configStore.mousePassthrough
-    updateConfig({ mousePassthrough: nextMousePassthrough })
+    updateConfig({
+      mousePassthrough: nextMousePassthrough,
+      ...(nextMousePassthrough ? { autoDockPIP: false } : {}),
+    })
     if (!nextMousePassthrough) {
       saveConfig()
     }

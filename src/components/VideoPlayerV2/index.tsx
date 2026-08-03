@@ -69,6 +69,7 @@ import SpeedIcon from './SpeedIcon'
 import Toast from './Toast'
 import VolumeIcon from './VolumeIcon'
 import ResizeButton from './bottomPanel/ResizeButton'
+import AutoDockButton from './bottomPanel/AutoDockButton'
 
 export type VideoPlayerHandle = {
   setCurrentTime: (time: number, pause?: boolean) => void
@@ -522,6 +523,7 @@ const VideoPlayerV2Inner = observer(
               </div>
 
               <div className="right ml-auto f-i-center gap-1">
+                {configStore.bp_autoDock && <AutoDockButton />}
                 {configStore.bp_resize && <ResizeButton />}
                 {configStore.keyboardTips_show && (
                   <QuestionCircleFilled

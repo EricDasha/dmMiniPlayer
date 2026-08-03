@@ -37,6 +37,10 @@ const config_features = {
     label: t('settingPanel.bpResize'),
     defaultValue: true,
   }),
+  bp_autoDock: config({
+    label: t('settingPanel.bpAutoDock'),
+    defaultValue: true,
+  }),
   keyboardTips_show: config({
     label: t('shortcut.showShortcutTips'),
     defaultValue: true,

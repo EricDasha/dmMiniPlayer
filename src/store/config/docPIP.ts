@@ -5,11 +5,36 @@ import {
   MovePIPAfterOpenType,
 } from '@root/types/config'
 import { t } from '@root/utils/i18n'
+import PIPWindowSettings from '@root/components/PIPWindowSettings'
+import NativeHostSettings from '@root/components/NativeHostSettings'
+import { createElement } from 'react'
 
 const category = 'PIP'
 const config: typeof _config = (props) => ({ ...props, category })
 
 export const docPIPConfig = {
+  nativeWindowHostManager: config({
+    label: t('settingPanel.nativeWindowHostManager'),
+    desc: t('settingPanel.nativeWindowHostManagerDesc'),
+    defaultValue: '',
+    render: () => createElement(NativeHostSettings),
+  }),
+  pipWindowResolution: config({
+    label: t('settingPanel.pipWindowResolution'),
+    desc: t('settingPanel.pipWindowResolutionDesc'),
+    defaultValue: '',
+    render: () => createElement(PIPWindowSettings),
+  }),
+  lockPIPAspectRatio: config({
+    label: t('settingPanel.lockPIPAspectRatio'),
+    desc: t('settingPanel.lockPIPAspectRatioDesc'),
+    defaultValue: false,
+  }),
+  autoDockPIP: config({
+    label: t('settingPanel.autoDockPIP'),
+    desc: t('settingPanel.autoDockPIPDesc'),
+    defaultValue: false,
+  }),
   autoPIP_inPageHide: config({
     label: t('settingPanel.autoPIPInPageHide'),
     defaultValue: false,

@@ -44,7 +44,8 @@ const sendNativeWindowOpacityMessage = (
   })
 }
 
-const probeNativeWindowOpacity = async () => {
+const probeNativeWindowOpacity = async (force = false) => {
+  if (force) nativeWindowOpacityAvailable = undefined
   if (nativeWindowOpacityAvailable !== undefined) {
     return nativeWindowOpacityAvailable
   }
@@ -117,8 +118,8 @@ onMessage(
   },
 )
 
-onMessage(WebextEvent.probeNativeWindowOpacity, async () => {
-  return probeNativeWindowOpacity()
+onMessage(WebextEvent.probeNativeWindowOpacity, async ({ data }) => {
+  return probeNativeWindowOpacity(data?.force)
 })
 
 onMessage(WebextEvent.setNativeWindowOpacity, async ({ data }) => {
@@ -151,6 +152,16 @@ onMessage(WebextEvent.setNativeMousePassthrough, async ({ data }) => {
     ...data,
   })
   if (response.ok) nativeWindowOpacityAvailable = true
+  return !!response.ok
+})
+
+onMessage(WebextEvent.uninstallNativeWindowHost, async () => {
+  if (!(await probeNativeWindowOpacity(true))) return false
+
+  const response = await sendNativeWindowOpacityMessage({
+    command: 'uninstall',
+  })
+  if (response.ok) nativeWindowOpacityAvailable = false
   return !!response.ok
 })
 

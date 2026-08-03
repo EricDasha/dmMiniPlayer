@@ -54,7 +54,10 @@ declare module 'webext-bridge' {
     [WebextEvent.updateDocPIPRect]: {
       docPIPWidth: number
     } & Partial<{ left: number; top: number; width: number; height: number }>
-    [WebextEvent.probeNativeWindowOpacity]: ProtocolWithReturn<null, boolean>
+    [WebextEvent.probeNativeWindowOpacity]: ProtocolWithReturn<
+      { force?: boolean } | null,
+      boolean
+    >
     [WebextEvent.setNativeWindowOpacity]: ProtocolWithReturn<
       NativeWindowOpacityPayload,
       boolean
@@ -67,6 +70,7 @@ declare module 'webext-bridge' {
       NativeWindowMousePassthroughPayload,
       boolean
     >
+    [WebextEvent.uninstallNativeWindowHost]: ProtocolWithReturn<null, boolean>
 
     [WebextEvent.afterStartPIP]: { width: number }
 
