@@ -14,6 +14,101 @@ import {
 import { onMessage } from 'webext-bridge/background'
 
 let nativeWindowOpacityAvailable: boolean | undefined
+let persistentNativePort: chrome.runtime.Port | undefined
+type PersistentNativeRequest = {
+  message: NativeWindowOpacityHostMessage
+  resolve: (value: NativeWindowOpacityHostResponse | null) => void
+  timeout?: ReturnType<typeof setTimeout>
+}
+let activePersistentNativeRequest: PersistentNativeRequest | undefined
+const persistentNativeQueue: PersistentNativeRequest[] = []
+
+const failPersistentNativeRequests = () => {
+  if (activePersistentNativeRequest?.timeout) {
+    clearTimeout(activePersistentNativeRequest.timeout)
+  }
+  activePersistentNativeRequest?.resolve(null)
+  activePersistentNativeRequest = undefined
+  persistentNativeQueue.splice(0).forEach(({ resolve }) => resolve(null))
+}
+
+const disconnectPersistentNativePort = () => {
+  failPersistentNativeRequests()
+  const port = persistentNativePort
+  persistentNativePort = undefined
+  try {
+    port?.disconnect()
+  } catch (error) {}
+}
+
+const pumpPersistentNativeQueue = () => {
+  if (activePersistentNativeRequest || !persistentNativeQueue.length) return
+  const port = persistentNativePort
+  if (!port) {
+    failPersistentNativeRequests()
+    return
+  }
+
+  const request = persistentNativeQueue.shift()!
+  activePersistentNativeRequest = request
+  request.timeout = setTimeout(() => {
+    if (activePersistentNativeRequest !== request) return
+    disconnectPersistentNativePort()
+  }, 1500)
+  port.postMessage(request.message)
+}
+
+const ensurePersistentNativePort = () => {
+  if (persistentNativePort) return persistentNativePort
+  const port = chrome.runtime.connectNative(NATIVE_WINDOW_OPACITY_HOST)
+  persistentNativePort = port
+  port.onMessage.addListener((response: NativeWindowOpacityHostResponse) => {
+    const request = activePersistentNativeRequest
+    if (!request) return
+    if (request.timeout) clearTimeout(request.timeout)
+    activePersistentNativeRequest = undefined
+    request.resolve(response)
+    pumpPersistentNativeQueue()
+  })
+  port.onDisconnect.addListener(() => {
+    if (chrome.runtime.lastError?.message) {
+      nativeWindowOpacityAvailable = false
+    }
+    if (persistentNativePort === port) persistentNativePort = undefined
+    failPersistentNativeRequests()
+  })
+  return port
+}
+
+const sendPersistentNativeMessage = async (
+  message: NativeWindowOpacityHostMessage,
+) => {
+  if (!(await probeNativeWindowOpacity())) return null
+  return new Promise<NativeWindowOpacityHostResponse | null>((resolve) => {
+    try {
+      ensurePersistentNativePort()
+      persistentNativeQueue.push({ message, resolve })
+      pumpPersistentNativeQueue()
+    } catch (error) {
+      disconnectPersistentNativePort()
+      resolve(null)
+    }
+  })
+}
+
+const getNativeCursorPosition = async () => {
+  const response = await sendPersistentNativeMessage({
+    command: 'getCursorPosition',
+  })
+  if (
+    !response?.ok ||
+    response.cursorX === undefined ||
+    response.cursorY === undefined
+  ) {
+    return null
+  }
+  return { x: response.cursorX, y: response.cursorY }
+}
 
 const sendNativeWindowOpacityMessage = (
   message: NativeWindowOpacityHostMessage,
@@ -155,6 +250,16 @@ onMessage(WebextEvent.setNativeMousePassthrough, async ({ data }) => {
   return !!response.ok
 })
 
+onMessage(WebextEvent.getNativeCursorPosition, getNativeCursorPosition)
+
+onMessage(WebextEvent.setNativeWindowPosition, async ({ data }) => {
+  const response = await sendPersistentNativeMessage({
+    command: 'setPosition',
+    ...data,
+  })
+  return !!response?.ok
+})
+
 onMessage(WebextEvent.uninstallNativeWindowHost, async () => {
   if (!(await probeNativeWindowOpacity(true))) return false
 
@@ -166,6 +271,7 @@ onMessage(WebextEvent.uninstallNativeWindowHost, async () => {
 })
 
 onMessage(WebextEvent.closePIP, () => {
+  disconnectPersistentNativePort()
   setDocPIPTabId(null)
 })
 

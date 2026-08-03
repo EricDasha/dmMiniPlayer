@@ -17,7 +17,7 @@
     "nativeWindowHostManager": "Windows native host",
     "nativeWindowHostManagerDesc": "Detect, install, or uninstall the native host required for real window opacity and OS-level mouse passthrough.",
     "nativeHostMissingTitle": "dmMiniPlayer native host is not installed",
-    "nativeHostMissingConsequences": "Video playback and auto-dock still work without it, but opacity cannot affect the entire Windows PiP window and mouse passthrough can only skip extension content; clicks cannot reach applications underneath.",
+    "nativeHostMissingConsequences": "Video playback and normal PiP still work without it, but hover-to-hide cannot detect when the pointer leaves the original window area; opacity cannot affect the entire Windows PiP window and passthrough clicks cannot reach applications underneath.",
     "nativeHostInstallSteps": "How to install:\n1. Open the installation guide and download or build the native tools.\n2. Run dmmp-window-opacity-installer.exe.\n3. Paste the current extension ID, select Chrome/Edge, and click Install / Update.\n4. Restart the browser, then click Recheck.",
     "nativeHostOpenInstallGuide": "Open installation guide",
     "nativeHostDoNotRemind": "Do not remind again",
@@ -42,8 +42,8 @@
     "pipWindowNotOpen": "PiP is not open",
     "lockPIPAspectRatio": "Lock current aspect ratio",
     "lockPIPAspectRatioDesc": "Captures the current aspect ratio and corrects subsequent window resizing to keep it.",
-    "autoDockPIP": "Auto dock",
-    "autoDockPIPDesc": "Smoothly hide at the nearest vertical screen edge when the pointer leaves PiP, keep a 40 px strip visible, and restore when the pointer enters it. Mutually exclusive with mouse passthrough and reset when PiP closes.",
+    "autoDockPIP": "Hover to hide",
+    "autoDockPIPDesc": "Entering PiP smoothly hides it at the nearest vertical screen edge while retaining a 40 px strip; leaving the original window area restores it. Requires the Windows native host, is mutually exclusive with mouse passthrough, and resets when PiP closes.",
     "videoNoBorder_default": "Not adjusted by default",
     "videoNoBorder_width": "Based on width",
     "videoNoBorder_height": "Based on height",
@@ -168,7 +168,7 @@
     "bpSharpening": "Video Sharpening",
     "bpMousePassthrough": "Mouse passthrough",
     "bpViewportOpacity": "Window opacity",
-    "bpAutoDock": "Auto dock"
+    "bpAutoDock": "Hover to hide"
   },
   "pos": {
     "topLeft": "Top left",

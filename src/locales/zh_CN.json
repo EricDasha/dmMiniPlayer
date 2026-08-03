@@ -17,7 +17,7 @@
     "nativeWindowHostManager": "Windows native host",
     "nativeWindowHostManagerDesc": "检测、安装或卸载真实窗口透明与系统级鼠标穿透所需的 native host。",
     "nativeHostMissingTitle": "尚未安装 dmMiniPlayer native host",
-    "nativeHostMissingConsequences": "不安装仍可播放视频和使用自动吸附，但窗口不透明度无法改变整个 Windows PiP 窗口，鼠标穿透也只能跳过扩展内容，点击无法真正落到下方应用。",
+    "nativeHostMissingConsequences": "不安装仍可播放视频和使用普通 PiP，但悬停收起无法判断鼠标何时移出原窗口区域；窗口不透明度也无法改变整个 Windows PiP 窗口，鼠标穿透点击无法真正落到下方应用。",
     "nativeHostInstallSteps": "安装方法：\n1. 打开安装指南并下载或构建 native 工具。\n2. 运行 dmmp-window-opacity-installer.exe。\n3. 粘贴当前扩展 ID，选择 Chrome/Edge，点击“安装 / 更新”。\n4. 重启浏览器后点击“重新检测”。",
     "nativeHostOpenInstallGuide": "打开安装指南",
     "nativeHostDoNotRemind": "不再提醒",
@@ -42,8 +42,8 @@
     "pipWindowNotOpen": "PiP 尚未打开",
     "lockPIPAspectRatio": "固定当前比例缩放窗口",
     "lockPIPAspectRatioDesc": "开启时记住当前宽高比，之后拖动窗口会自动校正为该比例。",
-    "autoDockPIP": "自动吸附",
-    "autoDockPIPDesc": "鼠标移出 PiP 后平滑隐藏到最近的屏幕纵边并保留 40px，移入窄条后恢复；与鼠标穿透互斥，关闭 PiP 后自动重置。",
+    "autoDockPIP": "悬停收起",
+    "autoDockPIPDesc": "鼠标移入 PiP 后平滑收起到最近的屏幕纵边并保留 40px；鼠标离开原窗口区域后自动恢复。依赖 Windows native host，与鼠标穿透互斥，关闭 PiP 后自动重置。",
     "videoNoBorder_default": "默认不调整",
     "videoNoBorder_width": "以宽度为准",
     "videoNoBorder_height": "以高度为准",
@@ -168,7 +168,7 @@
     "bpSharpening": "视频锐化",
     "bpMousePassthrough": "鼠标穿透",
     "bpViewportOpacity": "窗口不透明度",
-    "bpAutoDock": "自动吸附"
+    "bpAutoDock": "悬停收起"
   },
   "pos": {
     "topLeft": "左上",

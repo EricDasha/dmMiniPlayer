@@ -21,6 +21,8 @@ enum WebextEvent {
   setNativeWindowOpacity = 'setNativeWindowOpacity',
   resetNativeWindowOpacity = 'resetNativeWindowOpacity',
   setNativeMousePassthrough = 'setNativeMousePassthrough',
+  getNativeCursorPosition = 'getNativeCursorPosition',
+  setNativeWindowPosition = 'setNativeWindowPosition',
   uninstallNativeWindowHost = 'uninstallNativeWindowHost',
 
   beforeStartPIP = 'beforeStartPIP',

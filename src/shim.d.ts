@@ -6,6 +6,7 @@ import type {
   NativeWindowMousePassthroughPayload,
   NativeWindowOpacityPayload,
   NativeWindowOpacityTarget,
+  NativeWindowPositionPayload,
 } from './shared/nativeWindowOpacity'
 
 declare module 'webext-bridge' {
@@ -68,6 +69,14 @@ declare module 'webext-bridge' {
     >
     [WebextEvent.setNativeMousePassthrough]: ProtocolWithReturn<
       NativeWindowMousePassthroughPayload,
+      boolean
+    >
+    [WebextEvent.getNativeCursorPosition]: ProtocolWithReturn<
+      null,
+      { x: number; y: number } | null
+    >
+    [WebextEvent.setNativeWindowPosition]: ProtocolWithReturn<
+      NativeWindowPositionPayload,
       boolean
     >
     [WebextEvent.uninstallNativeWindowHost]: ProtocolWithReturn<null, boolean>

@@ -24,11 +24,19 @@ export type NativeWindowMousePassthroughPayload = NativeWindowOpacityTarget & {
   enabled: boolean
 }
 
+export type NativeWindowPositionPayload = NativeWindowOpacityTarget & {
+  left: number
+  top: number
+  smoothMs?: number
+}
+
 export type NativeWindowOpacityHostMessage =
   | { command: 'ping' }
+  | { command: 'getCursorPosition' }
   | { command: 'uninstall' }
   | ({ command: 'setOpacity' } & NativeWindowOpacityPayload)
   | ({ command: 'setMousePassthrough' } & NativeWindowMousePassthroughPayload)
+  | ({ command: 'setPosition' } & NativeWindowPositionPayload)
   | ({ command: 'reset' } & NativeWindowOpacityTarget)
 
 export type NativeWindowOpacityHostResponse = {
@@ -39,4 +47,6 @@ export type NativeWindowOpacityHostResponse = {
   alpha?: number
   passthrough?: boolean
   uninstalled?: boolean
+  cursorX?: number
+  cursorY?: number
 }

@@ -44,6 +44,7 @@ var (
 	procGetWindowTextW             = user32.NewProc("GetWindowTextW")
 	procGetWindowTextLengthW       = user32.NewProc("GetWindowTextLengthW")
 	procGetWindowRect              = user32.NewProc("GetWindowRect")
+	procGetCursorPos               = user32.NewProc("GetCursorPos")
 	procIsWindowVisible            = user32.NewProc("IsWindowVisible")
 	procGetWindowLongPtrW          = user32.NewProc("GetWindowLongPtrW")
 	procSetWindowLongPtrW          = user32.NewProc("SetWindowLongPtrW")
@@ -68,6 +69,8 @@ type request struct {
 	Opacity  int      `json:"opacity"`
 	SmoothMs int      `json:"smoothMs"`
 	Enabled  bool     `json:"enabled"`
+	Left     int      `json:"left"`
+	Top      int      `json:"top"`
 }
 
 type response struct {
@@ -78,6 +81,13 @@ type response struct {
 	Alpha       int    `json:"alpha,omitempty"`
 	Passthrough bool   `json:"passthrough,omitempty"`
 	Uninstalled bool   `json:"uninstalled,omitempty"`
+	CursorX     *int32 `json:"cursorX,omitempty"`
+	CursorY     *int32 `json:"cursorY,omitempty"`
+}
+
+type point struct {
+	X int32
+	Y int32
 }
 
 type rect struct {
@@ -137,6 +147,10 @@ func handle(req request) response {
 		return setOpacity(req, clamp(req.Opacity, minOpacity, maxOpacity))
 	case "setMousePassthrough":
 		return setMousePassthrough(req, req.Enabled)
+	case "getCursorPosition":
+		return getCursorPosition()
+	case "setPosition":
+		return setPosition(req)
 	case "uninstall":
 		return uninstallNativeHost()
 	case "reset":
@@ -144,6 +158,29 @@ func handle(req request) response {
 	default:
 		return response{OK: false, Error: "unknown command"}
 	}
+}
+
+func getCursorPosition() response {
+	var cursor point
+	ret, _, err := procGetCursorPos.Call(uintptr(unsafe.Pointer(&cursor)))
+	if ret == 0 {
+		return response{OK: false, Error: err.Error()}
+	}
+	return response{OK: true, CursorX: &cursor.X, CursorY: &cursor.Y}
+}
+
+func setPosition(req request) response {
+	win, ok, err := findBestWindowByBounds(req)
+	if err != nil {
+		return response{OK: false, Error: err.Error()}
+	}
+	if !ok {
+		return response{OK: false, Error: "target window not found by bounds"}
+	}
+	if err := animateWindowPosition(win.hwnd, win.bounds, req.Left, req.Top, req.SmoothMs); err != nil {
+		return response{OK: false, Error: err.Error()}
+	}
+	return response{OK: true, HWND: fmt.Sprintf("0x%x", win.hwnd), Title: win.title}
 }
 
 func uninstallNativeHost() response {
@@ -285,6 +322,43 @@ func setWindowMousePassthrough(hwnd uintptr, enabled bool) error {
 		0,
 		0,
 		swpNoMove|swpNoSize|swpNoZOrder|swpNoActivate|swpFrameChanged,
+	)
+	if ret == 0 {
+		return err
+	}
+	return nil
+}
+
+func animateWindowPosition(hwnd uintptr, start bounds, left int, top int, smoothMs int) error {
+	if smoothMs <= 16 {
+		return setWindowPosition(hwnd, left, top)
+	}
+
+	startedAt := time.Now()
+	for {
+		progress := math.Min(1, float64(time.Since(startedAt).Milliseconds())/float64(smoothMs))
+		eased := 1 - math.Pow(1-progress, 3)
+		x := int(math.Round(float64(start.Left) + float64(left-start.Left)*eased))
+		y := int(math.Round(float64(start.Top) + float64(top-start.Top)*eased))
+		if err := setWindowPosition(hwnd, x, y); err != nil {
+			return err
+		}
+		if progress >= 1 {
+			return nil
+		}
+		time.Sleep(16 * time.Millisecond)
+	}
+}
+
+func setWindowPosition(hwnd uintptr, left int, top int) error {
+	ret, _, err := procSetWindowPos.Call(
+		hwnd,
+		0,
+		uintptr(left),
+		uintptr(top),
+		0,
+		0,
+		swpNoSize|swpNoZOrder|swpNoActivate,
 	)
 	if ret == 0 {
 		return err

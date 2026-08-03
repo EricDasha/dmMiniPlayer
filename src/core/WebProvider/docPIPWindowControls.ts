@@ -4,10 +4,10 @@ import { getDocPIPBorderSize } from '@root/utils/docPIP'
 import { autorun, reaction } from 'mobx'
 import { sendMessage } from 'webext-bridge/content-script'
 
-const AUTO_DOCK_DELAY = 350
+const AUTO_DOCK_DELAY = 180
 const AUTO_DOCK_VISIBLE_WIDTH = 40
 const AUTO_DOCK_ANIMATION_MS = 190
-const AUTO_DOCK_FRAME_MS = 16
+const AUTO_DOCK_CURSOR_POLL_MS = 60
 const ASPECT_RESIZE_DELAY = 80
 
 type ScreenWithOffset = Screen & { availLeft?: number }
@@ -17,8 +17,6 @@ type AutoDockState = {
   left: number
   top: number
 }
-
-const easeOutCubic = (progress: number) => 1 - Math.pow(1 - progress, 3)
 
 const wait = (ms: number) =>
   new Promise<void>((resolve) => {
@@ -50,6 +48,7 @@ export const attachPIPWindowControls = (
   }
   let autoDockTimer: ReturnType<typeof setTimeout> | undefined
   let autoDockAnimationGeneration = 0
+  let autoDockCursorTrackingGeneration = 0
   let pointerInsidePIP = false
   let aspectResizeTimer: ReturnType<typeof setTimeout> | undefined
   let aspectResizeInFlight = false
@@ -57,43 +56,33 @@ export const attachPIPWindowControls = (
   let previousInnerWidth = pipWindow.innerWidth
   let previousInnerHeight = pipWindow.innerHeight
 
-  const movePIPWindow = (left: number, top?: number) =>
-    sendMessage(WebextEvent.updateDocPIPRect, {
-      docPIPWidth: pipWindow.innerWidth,
-      left,
-      ...(top === undefined ? {} : { top }),
-    }).catch(() => undefined)
-
   const animateAutoDock = async (targetLeft: number, targetTop?: number) => {
     const generation = ++autoDockAnimationGeneration
-    const startLeft = pipWindow.screenLeft
-    const startTop = pipWindow.screenTop
-    const startedAt = performance.now()
-
-    while (!pipWindow.closed && generation === autoDockAnimationGeneration) {
-      const progress = Math.min(
-        1,
-        (performance.now() - startedAt) / AUTO_DOCK_ANIMATION_MS,
-      )
-      const easedProgress = easeOutCubic(progress)
-      const left = Math.round(
-        startLeft + (targetLeft - startLeft) * easedProgress,
-      )
-      const top =
-        targetTop === undefined
-          ? undefined
-          : Math.round(startTop + (targetTop - startTop) * easedProgress)
-
-      await movePIPWindow(left, top)
-      if (progress >= 1) return generation
-      await wait(AUTO_DOCK_FRAME_MS)
+    const title = pipWindow.document.title || document.title
+    const moved = await sendMessage(WebextEvent.setNativeWindowPosition, {
+      title,
+      titles: [title, document.title].filter(
+        (value, index, list) => value && list.indexOf(value) === index,
+      ),
+      bounds: {
+        left: pipWindow.screenLeft,
+        top: pipWindow.screenTop,
+        width: pipWindow.outerWidth,
+        height: pipWindow.outerHeight,
+      },
+      left: targetLeft,
+      top: targetTop ?? pipWindow.screenTop,
+      smoothMs: AUTO_DOCK_ANIMATION_MS,
+    }).catch(() => false)
+    if (!moved) {
+      updateConfig({ autoDockPIP: false })
     }
-
     return generation
   }
 
   const restoreAutoDock = async () => {
     clearTimeout(autoDockTimer)
+    autoDockCursorTrackingGeneration++
     if (autoDockState.phase === 'visible' || pipWindow.closed) return
 
     autoDockState.phase = 'showing'
@@ -116,8 +105,34 @@ export const attachPIPWindowControls = (
       return
     }
 
+    const initialCursor = await sendMessage(
+      WebextEvent.getNativeCursorPosition,
+      null,
+    ).catch(() => null)
+    if (
+      !initialCursor ||
+      !configStore.autoDockPIP ||
+      autoDockState.phase !== 'visible'
+    ) {
+      if (!initialCursor) updateConfig({ autoDockPIP: false })
+      return
+    }
+
     autoDockState.left = pipWindow.screenLeft
     autoDockState.top = pipWindow.screenTop
+    const originalBounds = {
+      left: pipWindow.screenLeft,
+      top: pipWindow.screenTop,
+      right: pipWindow.screenLeft + pipWindow.outerWidth,
+      bottom: pipWindow.screenTop + pipWindow.outerHeight,
+    }
+    const cursorStillInsidePIP =
+      initialCursor.x >= originalBounds.left &&
+      initialCursor.x < originalBounds.right &&
+      initialCursor.y >= originalBounds.top &&
+      initialCursor.y < originalBounds.bottom
+    if (!cursorStillInsidePIP) return
+
     const left = getNearestVerticalDockLeft(
       pipWindow.screen as ScreenWithOffset,
       pipWindow.screenLeft,
@@ -129,33 +144,47 @@ export const attachPIPWindowControls = (
     if (generation === autoDockAnimationGeneration) {
       autoDockState.phase = 'hidden'
       onPositionSettled?.()
+
+      const trackingGeneration = ++autoDockCursorTrackingGeneration
+      while (
+        !pipWindow.closed &&
+        configStore.autoDockPIP &&
+        autoDockState.phase === 'hidden' &&
+        trackingGeneration === autoDockCursorTrackingGeneration
+      ) {
+        const cursor = await sendMessage(
+          WebextEvent.getNativeCursorPosition,
+          null,
+        ).catch(() => null)
+        if (!cursor) {
+          updateConfig({ autoDockPIP: false })
+          return
+        }
+
+        const cursorStillOverOriginalPIP =
+          cursor.x >= originalBounds.left &&
+          cursor.x < originalBounds.right &&
+          cursor.y >= originalBounds.top &&
+          cursor.y < originalBounds.bottom
+        if (!cursorStillOverOriginalPIP) {
+          restoreAutoDock()
+          return
+        }
+        await wait(AUTO_DOCK_CURSOR_POLL_MS)
+      }
     }
   }
 
   const handlePointerEnter = () => {
     pointerInsidePIP = true
     clearTimeout(autoDockTimer)
-    restoreAutoDock()
+    if (autoDockState.phase === 'visible') {
+      autoDockTimer = setTimeout(dockToNearestVerticalEdge, AUTO_DOCK_DELAY)
+    }
   }
-  const handlePointerLeave = (event: PointerEvent) => {
+  const handlePointerLeave = () => {
     pointerInsidePIP = false
-    clearTimeout(autoDockTimer)
-
-    // document 的 pointerleave 也会在鼠标移到 PiP 原生标题栏时触发。
-    // 该区域仍属于窗口，不能像之前一样误判为“离开窗口”并立即隐藏。
-    const pointerStillInsideNativeWindow =
-      event.screenX >= pipWindow.screenLeft &&
-      event.screenX < pipWindow.screenLeft + pipWindow.outerWidth &&
-      event.screenY >= pipWindow.screenTop &&
-      event.screenY < pipWindow.screenTop + pipWindow.outerHeight
-    if (pointerStillInsideNativeWindow) return
-
-    autoDockTimer = setTimeout(dockToNearestVerticalEdge, AUTO_DOCK_DELAY)
-  }
-  const handleBlur = () => {
-    if (pointerInsidePIP) return
-    clearTimeout(autoDockTimer)
-    autoDockTimer = setTimeout(dockToNearestVerticalEdge, AUTO_DOCK_DELAY)
+    if (autoDockState.phase === 'visible') clearTimeout(autoDockTimer)
   }
 
   const handleAspectRatioResize = () => {
@@ -203,7 +232,6 @@ export const attachPIPWindowControls = (
 
   pipWindow.document.addEventListener('pointerenter', handlePointerEnter)
   pipWindow.document.addEventListener('pointerleave', handlePointerLeave)
-  pipWindow.addEventListener('blur', handleBlur)
   pipWindow.addEventListener('resize', handleAspectRatioResize)
 
   const disposeLockAspectRatio = autorun(() => {
@@ -216,7 +244,12 @@ export const attachPIPWindowControls = (
     }
   })
   const disposeAutoDock = autorun(() => {
-    if (!configStore.autoDockPIP) restoreAutoDock()
+    if (!configStore.autoDockPIP) {
+      restoreAutoDock()
+    } else if (pointerInsidePIP && autoDockState.phase === 'visible') {
+      clearTimeout(autoDockTimer)
+      autoDockTimer = setTimeout(dockToNearestVerticalEdge, AUTO_DOCK_DELAY)
+    }
   })
   const disposeExclusiveModes = reaction(
     () => [configStore.autoDockPIP, configStore.mousePassthrough] as const,
@@ -251,11 +284,11 @@ export const attachPIPWindowControls = (
       disposeExclusiveModes()
       pipWindow.document.removeEventListener('pointerenter', handlePointerEnter)
       pipWindow.document.removeEventListener('pointerleave', handlePointerLeave)
-      pipWindow.removeEventListener('blur', handleBlur)
       pipWindow.removeEventListener('resize', handleAspectRatioResize)
       clearTimeout(autoDockTimer)
       clearTimeout(aspectResizeTimer)
       autoDockAnimationGeneration++
+      autoDockCursorTrackingGeneration++
     },
   }
 }

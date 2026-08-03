@@ -2,7 +2,7 @@
 Fixes:
 1. Fixed an issue where videos could pause after enabling automatic picture-in-picture on Bilibili
 2. Adjusted behavior so closing picture-in-picture won't pause the video when the page that opened PIP is visible
-3. Added a session-only PiP auto-dock button that smoothly hides after the pointer truly leaves the native window or the window loses focus, keeps a 40 px edge strip visible, restores on pointer enter, no longer misfires over the native title bar, cancels when PiP is reactivated from the taskbar, and remains mutually exclusive with mouse passthrough
+3. Added a session-only PiP hover-to-hide button: entering PiP smoothly hides it at the nearest vertical screen edge while retaining a 40 px strip; leaving the original PiP footprint restores it, taskbar activation cancels the mode, and it remains mutually exclusive with mouse passthrough
 4. Added current PiP resolution display, manual width/height controls, and current-aspect-ratio locking
 5. Fixed mouse passthrough and native opacity regressions; activating PiP from the taskbar now restores mouse input
 6. Added Windows native-host detection, missing-host impact guidance, install instructions, a do-not-remind option, recheck, and uninstall controls
