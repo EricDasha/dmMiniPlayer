@@ -65,3 +65,9 @@ metafile-*.json
 tsup.*.bundled_*.mjs
 
 vite.client.dev.js
+
+# local code-abyss index
+.code-abyss/
+
+# local packaged artifacts
+dmMiniPlayer-local-build/

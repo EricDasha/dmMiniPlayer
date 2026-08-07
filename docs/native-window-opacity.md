@@ -5,7 +5,7 @@
 ## 安装
 
 1. 在 `chrome://extensions/` 或 `edge://extensions/` 打开开发者模式，加载 `dist` 后复制扩展 ID。
-2. 二选一安装。
+2. 安装 Native Host。安装器不再把 ID 绑定到某个浏览器，而是维护一份“允许连接的扩展 ID 列表”。Chrome、Edge 或不同 Profile 产生的 ID 都可以添加到同一列表；两个浏览器共用一份 host。
 
 GUI：
 
@@ -14,13 +14,15 @@ GUI：
 .\build\native\dmmp-window-opacity-installer.exe
 ```
 
-在窗口里粘贴扩展 ID，勾选 Chrome/Edge，点「安装 / 更新」。
+在窗口里逐个粘贴扩展 ID并点击「添加 ID」，按需用「删除选中 ID」移除，再点击「应用 ID 列表」。安装器会把完整列表写入 `allowed_origins`，自动注册到 Chrome 和 Edge，并显示当前允许的全部 ID。选择列表项后可点击「打开所选 ID 目录」，安装器会在 Chrome 与 Edge 的各 Profile 中查找。
 
 命令行：
 
 ```powershell
-.\scripts\install-native-opacity-host.ps1 -ExtensionId <扩展ID> -Browser Both
+.\scripts\install-native-opacity-host.ps1 -ChromeExtensionId <扩展ID1> -EdgeExtensionId <扩展ID2> -Browser Both
 ```
+
+命令行脚本保留旧参数兼容；GUI 安装器则统一按 ID 列表管理，不区分 ID 来源浏览器。
 
 3. 重启浏览器。
 4. 在扩展设置里开启 `启用原生窗口透明`。
@@ -38,12 +40,25 @@ GUI：
 
 首次打开 PiP 时会检测 native host；未安装会显示说明，可选择稍后提醒或不再提醒。
 
+## Host 是做什么的，原理是什么
+
+浏览器扩展运行在沙箱内，不能直接调用 Windows `SetWindowPos`、`SetLayeredWindowAttributes` 或修改顶层窗口扩展样式。Native Host 是一个 Windows `.exe`，浏览器通过 Native Messaging 以 `stdio` 启动它：每条消息先发送 4 字节 little-endian 长度，再发送 JSON 请求；Host 执行 Windows API 后用相同帧格式返回 JSON。
+
+安装器完成两件事：
+
+1. 将 `com.dmminiplayer.window_opacity.json` 写入工具目录，声明 host 可执行文件路径和 `allowed_origins`（任意数量的有效扩展 ID 都可列在这里）。
+2. 在当前用户注册表写入 Chrome 与 Edge 各自的 `NativeMessagingHosts\com.dmminiplayer.window_opacity` 默认值，指向同一个 manifest。
+
+扩展发出 `setOpacity`、`setMousePassthrough`、`setPosition` 等请求后，Host 枚举可见窗口并按标题/边界匹配 PiP 顶层窗口，再调用 Win32 API 修改透明度、位置或 `WS_EX_TRANSPARENT`。关闭 PiP 或执行 reset 时恢复透明度和鼠标命中行为。
+
 ## 卸载
 
 二选一：
 
 1. 在扩展设置的 `Windows native host` 中点击 `卸载 native host`。这会移除 Chrome/Edge 注册项和 manifest；重启浏览器后生效，工具目录可手动删除。
-2. 重新运行 `dmmp-window-opacity-installer.exe`，选择 Chrome/Edge 后点击 `卸载`。
+2. 重新运行 `dmmp-window-opacity-installer.exe`，点击“卸载全部注册”。
+
+> 安装完成后不能直接删除 `dmmp-window-opacity-host.exe` 或 manifest。浏览器每次使用原生窗口功能时仍会从 manifest 指定的路径启动 Host。若要清理文件，请先在新版安装器中点击“卸载全部注册”，重启浏览器，再删除整个 `native` 目录。
 
 ## 行为
 

@@ -3,17 +3,17 @@ import { getChangeLog, spawnWithoutLog } from './utils.mjs'
 
 const version = packageJson.version
 
-const url = 'https://github.com/apades/dmMiniPlayer/blob/main/docs/changeLog'
+const repository = process.env.GITHUB_REPOSITORY || 'EricDasha/dmMiniPlayer'
+const repositoryUrl = `https://github.com/${repository}`
+const url = `${repositoryUrl}/blob/main/docs/changeLog`
 
 async function main() {
-  const preVersion = (
-    await spawnWithoutLog(
-      'git',
-      'tag --sort=-creatordate | head -n 2'.split(' '),
-    )
-  )
-    .split('\n')[1]
-    .trim()
+  const tags = (await spawnWithoutLog('git', ['tag', '--sort=-creatordate']))
+    .split(/\r?\n/)
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+  const currentTag = `v${version}`
+  const preVersion = tags.find((tag) => tag !== currentTag)
 
   console.log(getChangeLog(version) || 'Small update')
   console.log(`[More](${url}.md#${version.replaceAll('.', '')})`)
@@ -22,8 +22,10 @@ async function main() {
   console.log(getChangeLog(version, 'zh') || '小更新')
   console.log(`[More](${url}-zh.md#${version.replaceAll('.', '')})`)
   console.log('')
-  console.log(
-    `Full commits: [${preVersion}...v${version}](https://github.com/apades/dmMiniPlayer/compare/${preVersion}...v${version})`,
-  )
+  if (preVersion) {
+    console.log(
+      `Full commits: [${preVersion}...${currentTag}](${repositoryUrl}/compare/${preVersion}...${currentTag})`,
+    )
+  }
 }
 main()

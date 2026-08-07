@@ -3,7 +3,7 @@
 
 [<img src="https://img.shields.io/chrome-web-store/v/nahbabjlllhocabmecfjmcblchhpoclj?label=chrome" />](https://chrome.google.com/webstore/detail/nahbabjlllhocabmecfjmcblchhpoclj)
 [<img src="https://img.shields.io/badge/dynamic/json?label=edge&query=%24.version&url=https%3A%2F%2Fmicrosoftedge.microsoft.com%2Faddons%2Fgetproductdetailsbycrxid%2Fhohfhljppjpiemblilibldgppjpclfbl" />](https://microsoftedge.microsoft.com/addons/detail/hohfhljppjpiemblilibldgppjpclfbl)
-[<img src="https://img.shields.io/github/v/release/apades/dmMiniPlayer?color=green" />](https://github.com/apades/dmMiniPlayer/releases/latest)
+[<img src="https://img.shields.io/github/v/release/EricDasha/dmMiniPlayer?color=green&label=fork%20release" />](https://github.com/EricDasha/dmMiniPlayer/releases/latest)
 
 </div>
 
@@ -13,14 +13,33 @@
 
 支持最新的画中画API功能，可以播放、发送弹幕，支持字幕，键盘控制进度，更好的画中画播放体验的浏览器插件
 
+> [!IMPORTANT]
+> 这是 [`apades/dmMiniPlayer`](https://github.com/apades/dmMiniPlayer) 的功能增强 fork。当前分支增加了 Windows PiP 原生透明度、鼠标穿透、悬停自动吸附，以及可管理多个扩展 ID 的 Native Host 安装器。Fork 构建产物请从本仓库 [Releases](https://github.com/EricDasha/dmMiniPlayer/releases/latest) 下载；上游商店版本不一定包含这些功能。
+
 - [chrome商店<img src="https://img.shields.io/chrome-web-store/v/nahbabjlllhocabmecfjmcblchhpoclj?label=chrome" />](https://chrome.google.com/webstore/detail/nahbabjlllhocabmecfjmcblchhpoclj)
 - [edge商店<img src="https://img.shields.io/badge/dynamic/json?label=edge&query=%24.version&url=https%3A%2F%2Fmicrosoftedge.microsoft.com%2Faddons%2Fgetproductdetailsbycrxid%2Fhohfhljppjpiemblilibldgppjpclfbl" /> 更新比较慢，如果有什么紧急bug修复一般都要一周后才能上架](https://microsoftedge.microsoft.com/addons/detail/hohfhljppjpiemblilibldgppjpclfbl)
-- [最新发布<img src="https://img.shields.io/github/v/release/apades/dmMiniPlayer?color=green" />](https://github.com/apades/dmMiniPlayer/releases/latest)
+- [Fork 最新发布<img src="https://img.shields.io/github/v/release/EricDasha/dmMiniPlayer?color=green" />](https://github.com/EricDasha/dmMiniPlayer/releases/latest)
 
+在提问前可以先搜索 issue 是否有类似的问题，或查看[上游 FAQ](https://github.com/apades/dmMiniPlayer/wiki/FAQ%E2%80%90zh)。
 
-在提问前可以先搜索issue是否有类似的问题，或者先看看[FAQ](https://github.com/apades/dmMiniPlayer/wiki/FAQ%E2%80%90zh)
+Fork 新功能的问题与建议请提交到 [EricDasha/dmMiniPlayer issues](https://github.com/EricDasha/dmMiniPlayer/issues)；上游通用问题可前往 [apades/dmMiniPlayer issues](https://github.com/apades/dmMiniPlayer/issues)。
 
-如果你有什么问题或者功能提议，请到[issues](https://github.com/apades/dmMiniPlayer/issues)里提出
+## Fork Release 自动构建
+
+推送以 `package.json` 版本开头的 SemVer tag 后，GitHub Actions 会自动构建并发布 Release。Fork 增量版可使用 `-native.YYYYMMDD.N` 后缀：
+
+```bash
+git tag v0.6.61-native.20260807.1
+git push fork v0.6.61-native.20260807.1
+```
+
+每个 Release 包含：
+
+- `chrome-mv3-prod-<version>.zip`：Chrome/Edge MV3 扩展包。
+- `dmMiniPlayer-native-windows-v<version>.zip`：Windows Native Host、GUI 安装器及说明文档。
+- `SHA256SUMS.txt`：Release 产物的 SHA-256 校验值。
+
+也可在 GitHub Actions 的 `Build and release` workflow 中手动输入一个已存在的 tag 重新构建。为避免源码与版本错配，workflow 会拒绝发布不以 `package.json` 版本开头的 tag。
 
 ## 🚀 功能
 - 拖拽或者键盘控制画中画窗口的进度条、音量、播放速率等
@@ -78,6 +97,45 @@ Drag `dist` folder and drop to `chrome://extensions/` page in Chrome (Open devel
 
 > [!WARNING]
 > 如果你使用edge打开有红色tab栏，建议升级到`126.0.2592.102`版本以上
+
+## Windows Native Host（窗口透明 / 鼠标穿透 / 自动吸附）
+
+Windows 原生窗口功能由 `dmmp-window-opacity-host.exe` 提供。它不是普通工具，而是由 Chrome/Edge 通过 Native Messaging 按需启动的后台 Host，用于调用 Windows API 控制 PiP 顶层窗口的位置、透明度和鼠标穿透。
+
+安装器与 Host 必须放在同一个 `native` 目录中，不能只保留其中一个：
+
+```text
+native/
+├─ dmmp-window-opacity-installer.exe  # 管理扩展 ID、注册表和 manifest
+├─ dmmp-window-opacity-host.exe       # 浏览器按需启动的窗口控制引擎
+└─ com.dmminiplayer.window_opacity.json
+```
+
+安装完成后不要删除 `dmmp-window-opacity-host.exe` 或同目录的 manifest；扩展启用原生窗口透明、鼠标穿透或自动吸附时仍需它们。若要删除，应先在安装器中点击“卸载全部注册”，重启浏览器后再删除整个 `native` 目录。
+
+安装器维护的是“允许连接的扩展 ID 列表”，不区分 Chrome 或 Edge。扩展 ID 可在 `chrome://extensions` 或 `edge://extensions` 的开发者模式中复制，然后逐个添加并点击“应用 ID 列表”。
+
+## Windows Native Host（窗口透明 / 鼠标穿透 / 自动吸附）
+
+Windows 的 PiP 顶层窗口控制需要 Native Host。请使用构建产物中的安装器完成配置：
+
+```text
+dmMiniPlayer-local-build\native\dmmp-window-opacity-installer.exe
+```
+
+在安装器中逐个添加浏览器扩展 ID，点击“应用 ID 列表”。安装器会把 ID 写入 Native Messaging manifest，并同时注册 Chrome 与 Edge。不同浏览器、不同 Profile 或不同 unpacked 加载实例的 ID 都可以加入同一列表。
+
+安装完成后的文件保留规则：
+
+```text
+dmmp-window-opacity-installer.exe    # 可删除；保留它便于以后添加/删除 ID、卸载和查看状态
+dmmp-window-opacity-host.exe         # 必须保留，浏览器运行扩展功能时会自动启动
+com.dmminiplayer.window_opacity.json # 必须保留，浏览器用它查找 Host 并校验允许的 ID
+```
+
+其中 `installer.exe` 配置完成后可以关闭甚至删除；只有需要修改 ID 或卸载时才需要再次使用。`host.exe` 与 `.json` 不能删除或移动，删除或移动会导致扩展无法连接 Native Host，窗口透明、鼠标穿透和自动吸附失效。若安装器窗口显示“未响应”，请确认不是从压缩包内直接运行，并将整个 `native` 文件夹解压到可写目录后再启动；安装器启动时会异步读取状态，浏览器注册表查询超过 1.5 秒也会自动超时，不再阻塞界面。
+
+详细原理与命令行安装方式见 [`docs/native-window-opacity.md`](./docs/native-window-opacity.md)。
 
 
 ## 💖 引用代码

@@ -1,7 +1,12 @@
 param(
-  [Parameter(Mandatory = $true)]
-  [ValidatePattern('^[a-p]{32}$')]
+  [Parameter(Mandatory = $false)]
   [string]$ExtensionId,
+
+  [string]$ChromeExtensionId,
+
+  [string]$EdgeExtensionId,
+
+  [string[]]$ExtensionIds,
 
   [ValidateSet('Chrome', 'Edge', 'Both')]
   [string]$Browser = 'Both',
@@ -17,6 +22,7 @@ $HostName = 'com.dmminiplayer.window_opacity'
 $NativeBuildDir = Join-Path $Root 'build\native'
 $ExePath = Join-Path $NativeBuildDir 'dmmp-window-opacity-host.exe'
 $ManifestPath = Join-Path $NativeBuildDir "$HostName.json"
+$StatePath = Join-Path $NativeBuildDir 'dmmp-window-opacity-install-state.json'
 
 function Step($Message) {
   Write-Host ""
@@ -65,17 +71,24 @@ if (-not (Test-Path $ExePath)) {
   Fail "Native host executable missing: $ExePath"
 }
 
+$allIds = @($ExtensionIds) + @($ExtensionId, $ChromeExtensionId, $EdgeExtensionId) | Where-Object { $_ } | ForEach-Object { $_.ToLower().Trim() } | Select-Object -Unique
+foreach ($id in $allIds) { if ($id -notmatch '^[a-p]{32}$') { Fail "extension ID 必须是 32 位 a-p 字母：$id" } }
+$origins = @($allIds | ForEach-Object { "chrome-extension://$_/" })
+if ($origins.Count -eq 0) { Fail '请提供 -ChromeExtensionId 和/或 -EdgeExtensionId' }
+
 Step "Write native messaging manifest"
 $manifest = [ordered]@{
   name = $HostName
   description = 'dmMiniPlayer Windows PiP native opacity host'
   path = $ExePath
   type = 'stdio'
-  allowed_origins = @("chrome-extension://$ExtensionId/")
+  allowed_origins = $origins
 }
 $manifestJson = $manifest | ConvertTo-Json -Depth 4
 $utf8NoBom = New-Object System.Text.UTF8Encoding -ArgumentList $false
 [System.IO.File]::WriteAllText($ManifestPath, $manifestJson, $utf8NoBom)
+$state = [ordered]@{ extension_ids = $allIds }
+[System.IO.File]::WriteAllText($StatePath, ($state | ConvertTo-Json), $utf8NoBom)
 
 $targets = switch ($Browser) {
   'Chrome' { @('Chrome') }

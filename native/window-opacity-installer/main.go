@@ -17,12 +17,14 @@ const (
 	hostName = "com.dmminiplayer.window_opacity"
 
 	extIDEditID       = 1001
-	chromeCheckID     = 1002
-	edgeCheckID       = 1003
-	installButtonID   = 1004
-	statusStaticID    = 1005
-	openFolderButton  = 1006
-	uninstallButtonID = 1007
+	addIDButtonID     = 1002
+	idListID          = 1003
+	removeIDButtonID  = 1004
+	installButtonID   = 1005
+	statusStaticID    = 1006
+	openFolderButton  = 1007
+	openSelectedDirID = 1008
+	uninstallButtonID = 1009
 
 	wsOverlappedWindow = 0x00CF0000
 	wsVisible          = 0x10000000
@@ -39,14 +41,21 @@ const (
 	wmDestroy = 0x0002
 	wmCommand = 0x0111
 
-	bmGetCheck = 0x00F0
-	bmSetCheck = 0x00F1
-	bstChecked = 1
+	bmGetCheck     = 0x00F0
+	bmSetCheck     = 0x00F1
+	bstChecked     = 1
+	lbAddString    = 0x0180
+	lbDeleteString = 0x0182
+	lbGetCount     = 0x018B
+	lbGetCurSel    = 0x0188
+	lbGetText      = 0x0189
+	lbSetCurSel    = 0x0186
 
 	swShow = 5
 
 	hkeyCurrentUser   = 0x80000001
 	keySetValue       = 0x0002
+	keyRead           = 0x20019
 	regSZ             = 1
 	errorFileNotFound = 2
 )
@@ -70,6 +79,7 @@ var (
 	procLoadCursorW      = user32.NewProc("LoadCursorW")
 	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 	procRegCreateKeyExW  = advapi32.NewProc("RegCreateKeyExW")
+	procRegOpenKeyExW    = advapi32.NewProc("RegOpenKeyExW")
 	procRegSetValueExW   = advapi32.NewProc("RegSetValueExW")
 	procRegDeleteTreeW   = advapi32.NewProc("RegDeleteTreeW")
 	procRegCloseKey      = advapi32.NewProc("RegCloseKey")
@@ -80,8 +90,7 @@ var (
 	wndProcCallback uintptr
 	mainWindow      uintptr
 	extensionEdit   uintptr
-	chromeCheck     uintptr
-	edgeCheck       uintptr
+	idList          uintptr
 	statusStatic    uintptr
 )
 
@@ -122,6 +131,12 @@ type nativeManifest struct {
 	AllowedOrigins []string `json:"allowed_origins"`
 }
 
+type installerState struct {
+	IDs      []string `json:"extension_ids,omitempty"`
+	ChromeID string   `json:"chrome_id,omitempty"`
+	EdgeID   string   `json:"edge_id,omitempty"`
+}
+
 func main() {
 	if err := runGUI(); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
@@ -151,8 +166,8 @@ func runGUI() error {
 		wsOverlappedWindow|wsVisible,
 		cwUseDefault,
 		cwUseDefault,
-		560,
-		260,
+		720,
+		470,
 		0,
 		0,
 		hInstance,
@@ -181,10 +196,16 @@ func wndProc(hwnd uintptr, message uint32, wParam, lParam uintptr) uintptr {
 		return 0
 	case wmCommand:
 		switch loword(wParam) {
+		case addIDButtonID:
+			addIDFromGUI()
+		case removeIDButtonID:
+			removeIDFromGUI()
 		case installButtonID:
 			installFromGUI()
 		case openFolderButton:
 			openBuildFolder()
+		case openSelectedDirID:
+			openSelectedExtensionDir()
 		case uninstallButtonID:
 			uninstallFromGUI()
 		}
@@ -198,16 +219,17 @@ func wndProc(hwnd uintptr, message uint32, wParam, lParam uintptr) uintptr {
 }
 
 func createControls(hwnd uintptr) {
-	createControl("STATIC", "扩展 ID：", wsChild|wsVisible|ssLeft, 18, 22, 80, 24, hwnd, 0)
-	extensionEdit = createControl("EDIT", "", wsChild|wsVisible|wsTabStop|esAutoHScroll, 98, 18, 420, 26, hwnd, extIDEditID)
-	chromeCheck = createControl("BUTTON", "Chrome", wsChild|wsVisible|wsTabStop|bsAutoCheckbox, 98, 58, 120, 24, hwnd, chromeCheckID)
-	edgeCheck = createControl("BUTTON", "Edge", wsChild|wsVisible|wsTabStop|bsAutoCheckbox, 230, 58, 120, 24, hwnd, edgeCheckID)
-	procSendMessageW.Call(chromeCheck, bmSetCheck, bstChecked, 0)
-	procSendMessageW.Call(edgeCheck, bmSetCheck, bstChecked, 0)
-	createControl("BUTTON", "安装 / 更新", wsChild|wsVisible|wsTabStop|bsDefPushButton, 48, 96, 130, 32, hwnd, installButtonID)
-	createControl("BUTTON", "卸载", wsChild|wsVisible|wsTabStop, 190, 96, 130, 32, hwnd, uninstallButtonID)
-	createControl("BUTTON", "打开工具目录", wsChild|wsVisible|wsTabStop, 332, 96, 150, 32, hwnd, openFolderButton)
-	statusStatic = createControl("STATIC", "先在 chrome://extensions/ 复制 unpacked 扩展 ID。", wsChild|wsVisible|ssLeft, 18, 148, 500, 64, hwnd, statusStaticID)
+	createControl("STATIC", "扩展 ID（每次添加一个，来自 chrome://extensions 或 edge://extensions）：", wsChild|wsVisible|ssLeft, 18, 18, 620, 24, hwnd, 0)
+	extensionEdit = createControl("EDIT", "", wsChild|wsVisible|wsTabStop|esAutoHScroll, 18, 46, 500, 26, hwnd, extIDEditID)
+	createControl("BUTTON", "添加 ID", wsChild|wsVisible|wsTabStop|bsDefPushButton, 530, 44, 110, 30, hwnd, addIDButtonID)
+	idList = createControl("LISTBOX", "", wsChild|wsVisible|wsTabStop, 18, 82, 500, 130, hwnd, idListID)
+	createControl("BUTTON", "删除选中 ID", wsChild|wsVisible|wsTabStop, 530, 82, 110, 30, hwnd, removeIDButtonID)
+	createControl("BUTTON", "应用 ID 列表", wsChild|wsVisible|wsTabStop|bsDefPushButton, 18, 228, 140, 32, hwnd, installButtonID)
+	createControl("BUTTON", "卸载全部注册", wsChild|wsVisible|wsTabStop, 168, 228, 140, 32, hwnd, uninstallButtonID)
+	createControl("BUTTON", "打开工具目录", wsChild|wsVisible|wsTabStop, 318, 228, 150, 32, hwnd, openFolderButton)
+	createControl("BUTTON", "打开所选 ID 目录", wsChild|wsVisible|wsTabStop, 478, 228, 162, 32, hwnd, openSelectedDirID)
+	statusStatic = createControl("STATIC", "正在读取安装状态……", wsChild|wsVisible|ssLeft, 18, 278, 620, 150, hwnd, statusStaticID)
+	refreshStatus()
 }
 
 func createControl(className, text string, style uintptr, x, y, w, h int, parent uintptr, id uintptr) uintptr {
@@ -229,35 +251,30 @@ func createControl(className, text string, style uintptr, x, y, w, h int, parent
 }
 
 func installFromGUI() {
-	extensionID := strings.TrimSpace(getWindowText(extensionEdit))
-	if !extensionIDPattern.MatchString(extensionID) {
-		setStatus("扩展 ID 不合法。它应是 32 位 a-p 字母串。")
-		return
-	}
-
-	targets := []string{}
-	if isChecked(chromeCheck) {
-		targets = append(targets, "Chrome")
-	}
-	if isChecked(edgeCheck) {
-		targets = append(targets, "Edge")
-	}
-	if len(targets) == 0 {
-		setStatus("至少选择 Chrome 或 Edge。")
+	ids := getIDsFromList()
+	if len(ids) == 0 {
+		setStatus("列表为空，正在移除全部 Native Host 注册……")
+		go func() {
+			if err := uninstallNativeHost([]string{"Chrome", "Edge"}); err != nil {
+				setStatus("移除失败：" + err.Error())
+				return
+			}
+			setStatus("ID 列表已清空，Chrome/Edge Native Host 注册已移除。")
+		}()
 		return
 	}
 
 	setStatus("安装中，请稍等……")
 	go func() {
-		if err := installNativeHost(extensionID, targets); err != nil {
+		if err := installNativeHost(ids); err != nil {
 			setStatus("安装失败：" + err.Error())
 			return
 		}
-		setStatus("安装完成。重启浏览器，然后开启「启用原生窗口透明」。")
+		setStatus("ID 列表已应用；同一 Host 已注册给 Chrome 与 Edge。请重启浏览器后启用原生窗口透明。\n\n" + installedStatus())
 	}()
 }
 
-func installNativeHost(extensionID string, targets []string) error {
+func installNativeHost(ids []string) error {
 	exePath, err := os.Executable()
 	if err != nil {
 		return err
@@ -269,12 +286,19 @@ func installNativeHost(extensionID string, targets []string) error {
 	}
 
 	manifestPath := filepath.Join(baseDir, hostName+".json")
+	state := loadInstallerState(baseDir)
+	state.IDs = ids
+	state.ChromeID, state.EdgeID = "", ""
+	allowed := []string{}
+	for _, id := range ids {
+		allowed = append(allowed, "chrome-extension://"+id+"/")
+	}
 	manifest := nativeManifest{
 		Name:           hostName,
 		Description:    "dmMiniPlayer Windows PiP native opacity host",
 		Path:           hostExe,
 		Type:           "stdio",
-		AllowedOrigins: []string{"chrome-extension://" + extensionID + "/"},
+		AllowedOrigins: allowed,
 	}
 	body, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
@@ -284,7 +308,7 @@ func installNativeHost(extensionID string, targets []string) error {
 		return err
 	}
 
-	for _, target := range targets {
+	for _, target := range []string{"Chrome", "Edge"} {
 		var key string
 		switch target {
 		case "Chrome":
@@ -296,33 +320,28 @@ func installNativeHost(extensionID string, targets []string) error {
 			return fmt.Errorf("%s registry: %w", target, err)
 		}
 	}
+	if err := saveInstallerState(baseDir, state); err != nil {
+		return err
+	}
 	return nil
 }
 
 func uninstallFromGUI() {
-	targets := []string{}
-	if isChecked(chromeCheck) {
-		targets = append(targets, "Chrome")
-	}
-	if isChecked(edgeCheck) {
-		targets = append(targets, "Edge")
-	}
-	if len(targets) == 0 {
-		setStatus("至少选择 Chrome 或 Edge。")
-		return
-	}
-
 	setStatus("卸载中，请稍等……")
 	go func() {
-		if err := uninstallNativeHost(targets); err != nil {
+		if err := uninstallNativeHost([]string{"Chrome", "Edge"}); err != nil {
 			setStatus("卸载失败：" + err.Error())
 			return
 		}
-		setStatus("卸载完成。请重启所选浏览器；若不再使用，可删除当前工具目录。")
+		setStatus("卸载完成。已移除 Chrome/Edge 注册与 ID 列表；请重启浏览器。")
 	}()
 }
 
 func uninstallNativeHost(targets []string) error {
+	exePath, _ := os.Executable()
+	baseDir := filepath.Dir(exePath)
+	state := loadInstallerState(baseDir)
+	state.IDs = nil
 	for _, target := range targets {
 		var key string
 		switch target {
@@ -338,16 +357,21 @@ func uninstallNativeHost(targets []string) error {
 		if ret != 0 && ret != errorFileNotFound {
 			return fmt.Errorf("%s registry: %w", target, err)
 		}
+		if target == "Chrome" {
+			state.ChromeID = ""
+		} else if target == "Edge" {
+			state.EdgeID = ""
+		}
 	}
 
 	if len(targets) == 2 {
-		exePath, err := os.Executable()
-		if err == nil {
-			manifestPath := filepath.Join(filepath.Dir(exePath), hostName+".json")
-			if removeErr := os.Remove(manifestPath); removeErr != nil && !os.IsNotExist(removeErr) {
-				return removeErr
-			}
+		manifestPath := filepath.Join(baseDir, hostName+".json")
+		if removeErr := os.Remove(manifestPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			return removeErr
 		}
+	}
+	if err := saveInstallerState(baseDir, state); err != nil {
+		return err
 	}
 	return nil
 }
@@ -400,6 +424,180 @@ func openBuildFolder() {
 		0,
 		swShow,
 	)
+}
+
+func statePath(baseDir string) string {
+	return filepath.Join(baseDir, "dmmp-window-opacity-install-state.json")
+}
+
+func loadInstallerState(baseDir string) installerState {
+	var state installerState
+	body, err := os.ReadFile(statePath(baseDir))
+	if err == nil {
+		_ = json.Unmarshal(body, &state)
+	}
+	if len(state.IDs) == 0 {
+		for _, id := range []string{state.ChromeID, state.EdgeID} {
+			if extensionIDPattern.MatchString(id) {
+				state.IDs = append(state.IDs, id)
+			}
+		}
+	}
+	seen := map[string]bool{}
+	unique := []string{}
+	for _, id := range state.IDs {
+		if extensionIDPattern.MatchString(id) && !seen[id] {
+			seen[id] = true
+			unique = append(unique, id)
+		}
+	}
+	state.IDs = unique
+	return state
+}
+
+func saveInstallerState(baseDir string, state installerState) error {
+	body, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(statePath(baseDir), body, 0644)
+}
+
+func registryKey(browser string) string {
+	if browser == "Chrome" {
+		return `HKCU\Software\Google\Chrome\NativeMessagingHosts\` + hostName
+	}
+	return `HKCU\Software\Microsoft\Edge\NativeMessagingHosts\` + hostName
+}
+
+func isBrowserRegistered(browser string) bool {
+	var key uintptr
+	ret, _, _ := procRegOpenKeyExW.Call(
+		hkeyCurrentUser,
+		uintptr(unsafe.Pointer(utf16Ptr(strings.TrimPrefix(registryKey(browser), `HKCU\`)))),
+		0,
+		keyRead,
+		uintptr(unsafe.Pointer(&key)),
+	)
+	if ret != 0 {
+		return false
+	}
+	procRegCloseKey.Call(key)
+	return true
+}
+
+func refreshStatus() {
+	exePath, err := os.Executable()
+	if err != nil {
+		setStatus("读取安装状态失败：" + err.Error())
+		return
+	}
+	state := loadInstallerState(filepath.Dir(exePath))
+	for _, id := range state.IDs {
+		addIDToList(id)
+	}
+	setStatus(installedStatus())
+}
+
+func installedStatus() string {
+	exePath, err := os.Executable()
+	if err != nil {
+		return "无法读取安装器位置：" + err.Error()
+	}
+	baseDir := filepath.Dir(exePath)
+	state := loadInstallerState(baseDir)
+	return "当前安装状态：\nChrome：" + registrationLabel("Chrome") + "\nEdge：" + registrationLabel("Edge") + "\n已允许的扩展 ID：" + strings.Join(state.IDs, ", ") + "\n\nHost 用途：接收扩展的 Native Messaging 指令，通过 Windows API 控制 PiP 顶层窗口的位置、透明度和鼠标穿透。\n浏览器只允许 manifest 的 allowed_origins 中列出的扩展 ID 连接。"
+}
+
+func registrationLabel(browser string) string {
+	if isBrowserRegistered(browser) {
+		return "已注册"
+	}
+	return "未注册"
+}
+
+func openSelectedExtensionDir() {
+	id := getSelectedID()
+	if !extensionIDPattern.MatchString(id) {
+		setStatus("请先在列表中选择合法扩展 ID。")
+		return
+	}
+	localAppData := os.Getenv("LOCALAPPDATA")
+	for _, rel := range []string{filepath.Join("Google", "Chrome", "User Data"), filepath.Join("Microsoft", "Edge", "User Data")} {
+		userDataDir := filepath.Join(localAppData, rel)
+		profiles, _ := os.ReadDir(userDataDir)
+		for _, profile := range profiles {
+			if !profile.IsDir() {
+				continue
+			}
+			candidate := filepath.Join(userDataDir, profile.Name(), "Extensions", id)
+			if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+				shellOpen(candidate)
+				setStatus("已打开扩展目录：\n" + candidate)
+				return
+			}
+		}
+	}
+	setStatus("未找到该 ID 的已安装目录。unpacked 扩展不会被浏览器复制到 Extensions；请使用「打开工具目录」。")
+}
+
+func shellOpen(path string) {
+	procShellExecuteW.Call(0, uintptr(unsafe.Pointer(utf16Ptr("open"))), uintptr(unsafe.Pointer(utf16Ptr(path))), 0, 0, swShow)
+}
+
+func addIDFromGUI() {
+	id := strings.ToLower(strings.TrimSpace(getWindowText(extensionEdit)))
+	if !extensionIDPattern.MatchString(id) {
+		setStatus("扩展 ID 不合法：必须是 32 位 a-p 字母。")
+		return
+	}
+	for _, existing := range getIDsFromList() {
+		if existing == id {
+			setStatus("该扩展 ID 已在列表中。")
+			return
+		}
+	}
+	addIDToList(id)
+	procSetWindowTextW.Call(extensionEdit, uintptr(unsafe.Pointer(utf16Ptr(""))))
+	setStatus("已添加 ID。点击「应用 ID 列表」写入 manifest 并注册 Chrome/Edge。")
+}
+
+func addIDToList(id string) {
+	procSendMessageW.Call(idList, lbAddString, 0, uintptr(unsafe.Pointer(utf16Ptr(id))))
+}
+
+func removeIDFromGUI() {
+	ret, _, _ := procSendMessageW.Call(idList, lbGetCurSel, 0, 0)
+	if ret == ^uintptr(0) {
+		setStatus("请先选择要删除的扩展 ID。")
+		return
+	}
+	procSendMessageW.Call(idList, lbDeleteString, ret, 0)
+	setStatus("已从待应用列表删除。点击「应用 ID 列表」更新 manifest。")
+}
+
+func getIDsFromList() []string {
+	count, _, _ := procSendMessageW.Call(idList, lbGetCount, 0, 0)
+	ids := []string{}
+	for i := uintptr(0); i < count; i++ {
+		var buf [64]uint16
+		procSendMessageW.Call(idList, lbGetText, i, uintptr(unsafe.Pointer(&buf[0])))
+		id := strings.TrimSpace(syscall.UTF16ToString(buf[:]))
+		if extensionIDPattern.MatchString(id) {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func getSelectedID() string {
+	ret, _, _ := procSendMessageW.Call(idList, lbGetCurSel, 0, 0)
+	if ret == ^uintptr(0) {
+		return ""
+	}
+	var buf [64]uint16
+	procSendMessageW.Call(idList, lbGetText, ret, uintptr(unsafe.Pointer(&buf[0])))
+	return strings.TrimSpace(syscall.UTF16ToString(buf[:]))
 }
 
 func getWindowText(hwnd uintptr) string {
