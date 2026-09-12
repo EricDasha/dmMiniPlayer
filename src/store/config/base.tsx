@@ -43,6 +43,25 @@ const baseConfigMap = {
     label: t('settingPanel.videoSharpening'),
     desc: t('settingPanel.videoSharpeningDesc'),
   }),
+  // fork: native host 提供的窗口级能力
+  mousePassthrough: config({
+    defaultValue: false,
+    label: t('settingPanel.mousePassthrough'),
+    desc: t('settingPanel.mousePassthroughDesc'),
+  }),
+  viewportOpacity: config({
+    defaultValue: 100,
+    type: 'range',
+    range: [5, 100],
+    rangeStep: 1,
+    label: t('settingPanel.viewportOpacity'),
+    desc: t('settingPanel.viewportOpacityDesc'),
+  }),
+  nativeWindowOpacityEnabled: config({
+    defaultValue: true,
+    label: t('settingPanel.nativeWindowOpacityEnabled' as any),
+    desc: t('settingPanel.nativeWindowOpacityEnabledDesc' as any),
+  }),
   videoNoBorder: config<videoBorderType>({
     type: 'group',
     label: t('settingPanel.videoNoBorder'),

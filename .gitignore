@@ -69,5 +69,9 @@ vite.client.dev.js
 # local code-abyss index
 .code-abyss/
 
+# local agent/ai scratch dirs
+.codex-tmp/
+.agents/
+
 # local packaged artifacts
 dmMiniPlayer-local-build/

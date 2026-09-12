@@ -42,6 +42,8 @@
     "pipWindowNotOpen": "PiP is not open",
     "lockPIPAspectRatio": "Lock current aspect ratio",
     "lockPIPAspectRatioDesc": "Captures the current aspect ratio and corrects subsequent window resizing to keep it.",
+    "lockPIPRatio16by9": "Lock 16:9 aspect ratio",
+    "lockPIPRatio16by9Desc": "Locks the PiP window to 16:9 and corrects subsequent window resizing to stay 16:9.",
     "autoDockPIP": "Hover to hide",
     "autoDockPIPDesc": "Entering PiP smoothly hides it at the nearest vertical screen edge while retaining a 40 px strip; leaving the original window area restores it. Requires the Windows native host, is mutually exclusive with mouse passthrough, and resets when PiP closes.",
     "videoNoBorder_default": "Not adjusted by default",
@@ -176,6 +178,7 @@
     "bpSharpening": "Video Sharpening",
     "bpMousePassthrough": "Mouse passthrough",
     "bpViewportOpacity": "Window opacity",
+    "bpLockRatio16by9": "Lock 16:9",
     "bpAutoDock": "Hover to hide"
   },
   "pos": {

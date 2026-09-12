@@ -53,6 +53,7 @@ export const attachPIPWindowControls = (
   let aspectResizeTimer: ReturnType<typeof setTimeout> | undefined
   let aspectResizeInFlight = false
   let lockedAspectRatio = pipWindow.innerWidth / pipWindow.innerHeight
+  let previousLockedRatio16by9 = configStore.lockPIPRatio16by9
   let previousInnerWidth = pipWindow.innerWidth
   let previousInnerHeight = pipWindow.innerHeight
 
@@ -200,10 +201,11 @@ export const attachPIPWindowControls = (
       const heightDelta = Math.abs(pipWindow.innerHeight - previousInnerHeight)
       let nextWidth = pipWindow.innerWidth
       let nextHeight = pipWindow.innerHeight
+      const ratio = configStore.lockPIPRatio16by9 ? 16 / 9 : lockedAspectRatio
       if (widthDelta >= heightDelta) {
-        nextHeight = Math.round(nextWidth / lockedAspectRatio)
+        nextHeight = Math.round(nextWidth / ratio)
       } else {
-        nextWidth = Math.round(nextHeight * lockedAspectRatio)
+        nextWidth = Math.round(nextHeight * ratio)
       }
 
       if (
@@ -236,10 +238,18 @@ export const attachPIPWindowControls = (
 
   const disposeLockAspectRatio = autorun(() => {
     if (configStore.lockPIPAspectRatio) {
-      lockedAspectRatio = pipWindow.innerWidth / pipWindow.innerHeight
+      lockedAspectRatio = configStore.lockPIPRatio16by9
+        ? 16 / 9
+        : pipWindow.innerWidth / pipWindow.innerHeight
       previousInnerWidth = pipWindow.innerWidth
       previousInnerHeight = pipWindow.innerHeight
+      // 刚切换到 16:9 锁定：立即把当前窗口校正一次到 16:9
+      if (configStore.lockPIPRatio16by9 && !previousLockedRatio16by9) {
+        handleAspectRatioResize()
+      }
+      previousLockedRatio16by9 = configStore.lockPIPRatio16by9
     } else {
+      previousLockedRatio16by9 = configStore.lockPIPRatio16by9
       clearTimeout(aspectResizeTimer)
     }
   })

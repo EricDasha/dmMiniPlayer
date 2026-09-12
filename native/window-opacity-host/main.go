@@ -35,6 +35,9 @@ const (
 	hostName          = "com.dmminiplayer.window_opacity"
 	hkeyCurrentUser   = 0x80000001
 	errorFileNotFound = 2
+	// 物理像素/CSS像素 的比例最大为 DPR²（最高≈4），再加上标题与边界偏移的裕量。
+	// 超过该倍数即视为误选了浏览器主窗口等大窗，直接拒绝匹配，防止把整个浏览器变透明。
+	maxAreaRatio = 6
 )
 
 var (
@@ -301,6 +304,9 @@ func findBestWindowByBounds(req request) (windowInfo, bool, error) {
 	if bestDistance > boundsTolerance*4 {
 		return windowInfo{}, false, nil
 	}
+	if !isReasonableAreaMatch(best, req.Bounds) {
+		return windowInfo{}, false, nil
+	}
 	return best, true, nil
 }
 
@@ -443,6 +449,9 @@ func findBestWindow(req request) (windowInfo, bool, error) {
 	if bestScore < 180 {
 		return windowInfo{}, false, nil
 	}
+	if !isReasonableAreaMatch(best, req.Bounds) {
+		return windowInfo{}, false, nil
+	}
 	return best, true, nil
 }
 
@@ -558,6 +567,19 @@ func normalizeTitle(title string) string {
 
 func hasBounds(b bounds) bool {
 	return b.Width > 0 && b.Height > 0
+}
+
+// 防止把浏览器主窗口误判成 docPIP：
+// JS 上报的 bounds 是 CSS 像素，GetWindowRect 返回物理像素，二者面积最多差 DPR²（≈4）。
+// 若候选窗口面积远超目标窗口，则它更可能是带标题栏/侧栏的浏览器主窗口，而不是小画中画。
+func isReasonableAreaMatch(win windowInfo, target bounds) bool {
+	if !hasBounds(target) {
+		return true
+	}
+	targetArea := max(1, target.Width*target.Height)
+	winArea := max(1, win.bounds.Width*win.bounds.Height)
+	ratio := float64(winArea) / float64(targetArea)
+	return ratio <= maxAreaRatio && ratio >= 1/maxAreaRatio
 }
 
 func writeResponse(out *bufio.Writer, resp response) {

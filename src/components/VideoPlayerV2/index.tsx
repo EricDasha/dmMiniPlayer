@@ -42,6 +42,7 @@ import ActionButton from './bottomPanel/ActionButton'
 import CurrentTimeTooltipsWithKeydown from './bottomPanel/CurrentTimeTooltipsWithKeydown'
 import DanmakuSettingBtn from './bottomPanel/DanmakuSettingBtn'
 import MousePassthroughButton from './bottomPanel/MousePassthroughButton'
+import LockRatio16by9Button from './bottomPanel/LockRatio16by9Button'
 import SharpeningButton from './bottomPanel/SharpeningButton'
 import PlaybackRateSelection from './bottomPanel/PlaybackRateSelection'
 import PlayedTime from './bottomPanel/PlayedTime'
@@ -516,6 +517,7 @@ const VideoPlayerV2Inner = observer(
 
                 {configStore.bp_sharpening && <SharpeningButton />}
                 {configStore.bp_mousePassthrough && <MousePassthroughButton />}
+                {configStore.bp_lockRatio16by9 && <LockRatio16by9Button />}
 
                 <ActionButton onClick={handleOpenSetting} className="mb:hidden">
                   <SettingOutlined className="block" />

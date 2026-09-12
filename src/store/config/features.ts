@@ -57,6 +57,10 @@ const config_features = {
     label: t('settingPanel.bpMousePassthrough'),
     defaultValue: true,
   }),
+  bp_lockRatio16by9: config({
+    label: t('settingPanel.bpLockRatio16by9'),
+    defaultValue: true,
+  }),
   bp_viewportOpacity: config({
     label: t('settingPanel.bpViewportOpacity'),
     defaultValue: true,

@@ -30,6 +30,11 @@ export const docPIPConfig = {
     desc: t('settingPanel.lockPIPAspectRatioDesc'),
     defaultValue: false,
   }),
+  lockPIPRatio16by9: config({
+    label: t('settingPanel.lockPIPRatio16by9'),
+    desc: t('settingPanel.lockPIPRatio16by9Desc'),
+    defaultValue: false,
+  }),
   autoDockPIP: config({
     label: t('settingPanel.autoDockPIP'),
     desc: t('settingPanel.autoDockPIPDesc'),

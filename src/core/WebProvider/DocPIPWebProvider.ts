@@ -282,6 +282,9 @@ export default class DocPIPWebProvider extends WebProvider {
 
     const handleWheel = (e: WheelEvent) => {
       if (!e.ctrlKey) return
+      // 不透明度滑杆等控件自己处理 ctrl+滚轮（一次 10%），不参与窗口缩放
+      const wheelTarget = e.target as Element | null
+      if (wheelTarget?.closest?.('.dmmp-opacity-control')) return
       e.preventDefault()
       e.stopPropagation()
       const isUp = e.deltaY < 0
@@ -294,10 +297,18 @@ export default class DocPIPWebProvider extends WebProvider {
       } = pipWindow
       const scale = isUp ? 1.03 : 0.97
 
-      const { width: sw, height: sh } = screen
-
-      const x = sw / 2 - left > left + width - sw / 2 ? 'left' : 'right'
-      const y = sh / 2 - top > top + height - sh / 2 ? 'top' : 'bottom'
+      // 以 pip 所在屏幕的中心为锚点判定，避免多屏/副屏上锚点算错导致窗口“跳”
+      const pipScreen = pipWindow.screen ?? screen
+      const screenLeft = (pipScreen as Screen & { availLeft?: number })
+        .availLeft ?? 0
+      const screenTop = (pipScreen as Screen & { availTop?: number })
+        .availTop ?? 0
+      const pipCenterX = left + width / 2
+      const pipCenterY = top + height / 2
+      const x =
+        pipCenterX < screenLeft + pipScreen.availWidth / 2 ? 'left' : 'right'
+      const y =
+        pipCenterY < screenTop + pipScreen.availHeight / 2 ? 'top' : 'bottom'
 
       const [newWidth, newHeight] = calculateNewDimensions(width, height, scale)
 

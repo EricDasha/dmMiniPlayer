@@ -48,7 +48,7 @@ const ViewportOpacitySlider: FC = observer(() => {
 
   return (
     <div
-      className="dmmp-keep-pointer f-i-center gap-2 h-[26px] px-2 rounded-[4px] bg-[#ffffff12] hover:bg-[#ffffff1f] transition-colors"
+      className="dmmp-opacity-control dmmp-keep-pointer f-i-center gap-2 h-[26px] px-2 rounded-[4px] bg-[#ffffff12] hover:bg-[#ffffff1f] transition-colors"
       title={`${t('settingPanel.viewportOpacity' as any)}: ${opacity}%`}
       onClick={stopEvent}
       onMouseDown={stopEvent}
