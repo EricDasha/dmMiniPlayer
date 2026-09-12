@@ -9,5 +9,6 @@
     },
     "[typescriptreact]": {
         "editor.defaultFormatter": "dbaeumer.vscode-eslint"
-    }
+    },
+    "tailwindCSS.experimental.configFile": "src/style/index.css"
 }

@@ -133,13 +133,14 @@ const API_bilibili = {
     ).data
 
     const binaryData = await fetch(res.pvdata).then((res) => res.arrayBuffer())
-    const uint16Array = new Uint8Array(binaryData)
 
     const timeNodes: number[] = []
-    for (let i = 0; i < uint16Array.length; i += 2) {
-      const timeNode = uint16Array[i] * 100 + uint16Array[i + 1]
-
-      timeNodes.push(timeNode)
+    const chunk = 2
+    let offset = 0
+    while (offset < binaryData.byteLength) {
+      const timeNode = binaryData.slice(offset, offset + chunk)
+      timeNodes.push(new DataView(timeNode).getUint16(0))
+      offset += chunk
     }
 
     // 第一个是0，可以去掉

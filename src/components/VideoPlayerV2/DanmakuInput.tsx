@@ -31,7 +31,7 @@ const DanmakuInputIconInner: FC<Props> = (props) => {
   return (
     <div>
       <div
-        className="p-[5px] cursor-pointer rounded-sm transition-colors hover:bg-[#333]"
+        className="p-[5px] cursor-pointer rounded-xs transition-colors hover:bg-[#333]"
         onClick={() => {
           eventBus.emit('visible')
         }}

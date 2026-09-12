@@ -43,7 +43,7 @@ const KeyboardTipsModal = createIsolationModal((props) => {
                         const isLast = i === keys.length - 1
                         return (
                           <Fragment>
-                            <kbd className="shadow-sm bor-[#b4b4b4] rounded font-bold px-2 py-0.5 font-[monospace] leading-[1]">
+                            <kbd className="shadow-xs bor-[#b4b4b4] rounded font-bold px-2 py-0.5 font-[monospace] leading-[1]">
                               {v}
                             </kbd>
                             {isLast ? '' : ' + '}

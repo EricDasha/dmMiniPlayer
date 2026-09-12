@@ -9,6 +9,8 @@ export type SubtitleRow = {
   startTime: number
   endTime: number
 
+  translatedText?: string
+
   text: string
   /**给Html用的 */
   htmlText: string
@@ -21,4 +23,8 @@ export type SubtitleManagerEvents = {
   'row-enter': SubtitleRow
   'row-leave': SubtitleRow
   reset: void
+  error: {
+    type: 'translate' | 'parse' | 'other'
+    text: string
+  }
 }

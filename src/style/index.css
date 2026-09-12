@@ -1,4 +1,88 @@
-@import url('./tailwind.css');
-@import url('./tailwindBase.css');
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@import './tailwindBase.css' layer(base);
 @import '@apad/rc-slider/assets/index.css';
 @import '@rc-component/trigger/assets/index.css';
+
+@source '../**/*.{html,tsx,jsx}';
+
+@plugin './tailwind.plugin.ts';
+
+@theme {
+  --shadow-btn-shadow: var(--btn-shadow, 0px 2px 4px rgba(55, 60, 68, 0.2));
+  --breakpoint-dp: 768px;
+  --container-dp: 768px;
+  --color-main: var(--main, #0669ff);
+  --color-bg: #262626;
+  --color-bg-hover: #404040;
+  --width-side-width: var(--side-width, 200px);
+  --width-btn-size: var(--btn-size, 120px);
+  --width-calc-auto: calc-size(auto, size);
+  --height-area-height: var(--area-height, 40px);
+  --height-btn-size: var(--btn-size, 120px);
+  --height-calc-auto: calc-size(auto, size);
+}
+
+@custom-variant mb (@media (width <= 768px));
+
+@utility f-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+@utility f-i-center {
+  display: flex;
+  align-items: center;
+}
+
+@utility flex-col {
+  display: flex;
+  flex-direction: column;
+}
+
+@utility ab-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+@utility ab-vertical-center {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+@utility vp-cover-icon-bg {
+  backdrop-filter: blur(2.71828px);
+  background: #fffc;
+}
+
+@utility custom-scrollbar {
+  &::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  &::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #fff7;
+    background-clip: content-box;
+    border: 2px solid transparent;
+    border-radius: 16px;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: #fffa;
+  }
+
+  &::-webkit-scrollbar-track {
+    display: none;
+  }
+}

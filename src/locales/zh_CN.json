@@ -128,6 +128,7 @@
     "subtitleFontWeight": "字体宽度",
     "subtitleFontOpacity": "字体透明度",
     "subtitleFontFamily": "字体",
+    "subtitleOriginTextFontSizeScaleInDoubleMode": "原始字体大小（双语字幕）",
     "subtitleAutoSizeDesc": "与弹幕的[动态字体大小]相同",
     "floatButton": "浮动按钮",
     "floatButtonPos": "位置",
@@ -263,7 +264,11 @@
   "subtitleTranslate": {
     "single": "单行",
     "double": "双行",
-    "none": "无操作"
+    "none": "无操作",
+    "enable": "翻译字幕",
+    "bilingual": "双语字幕",
+    "service": "翻译服务",
+    "translating": "翻译中..."
   },
   "hidden": "隐藏",
   "hover": "鼠标悬停",

@@ -104,6 +104,8 @@ type DqTarType =
   | Document
   | ValueOf<HTMLElementTagNameMap>
   | Element
+  | ShadowRoot
+  | ParentNode
   | undefined
   | null
 export const dq: {
@@ -119,7 +121,7 @@ export const dq: {
     selectors: K,
     tar?: DqTarType,
   ): MathMLElementTagNameMap[K][]
-  <E extends Element = HTMLDivElement>(selectors: string, tar?: DqTarType): E[]
+  <E extends Element = HTMLElement>(selectors: string, tar?: DqTarType): E[]
 } = (selector: string, tar = window.document as DqTarType) => {
   return Array.from(tar?.querySelectorAll(selector) ?? [])
 }
@@ -654,4 +656,16 @@ export function configStringArrValid(tar: string, configs: string[] = []) {
 
 export function normalizePath(path: string) {
   return path.replace(/\\/g, '/')
+}
+
+export function enumArray<T extends readonly string[]>(keys: T) {
+  return keys.reduce(
+    (acc, key) => {
+      ;(acc as any)[key] = key
+      return acc
+    },
+    {} as {
+      [K in T[number]]: K
+    },
+  )
 }

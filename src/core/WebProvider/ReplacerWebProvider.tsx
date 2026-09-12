@@ -56,7 +56,7 @@ export default class ReplacerWebProvider extends WebProvider {
           // ? 下面无论如何都是isShadowDom，不会没shadowDom的情况
           // console.log('stopPropagationKeyEvent', e.target, !!isShadowDom)
           // // shadowDom就放行
-          // if (isShadowDom) return
+          if (isShadowDom) return
 
           e.stopPropagation()
 
@@ -85,34 +85,19 @@ export default class ReplacerWebProvider extends WebProvider {
         events.forEach((event) => {
           // 发现只需要在body上阻止冒泡就可以让window上挂载的keydown事件监听不生效了
           document.body.addEventListener(event, stopPropagationKeyEvent)
-          document.body.addEventListener(event, stopPropagationKeyEvent, {
-            capture: true,
-          })
+          // ！不能阻止 capture 事件，不然会导致shadowDom里的事件监听不生效
 
           if (!containerRef.current) return
           // TODO 这里如果有嵌套shadowDom，就失效。但目前AppRoot只有一层shadowDom，暂时不考虑修复
           containerRef.current.addEventListener(event, shadowRootKeyEvent)
-          containerRef.current.addEventListener(event, shadowRootKeyEvent, {
-            capture: true,
-          })
         })
 
         return () => {
           events.forEach((event) => {
             document.body.removeEventListener(event, stopPropagationKeyEvent)
-            document.body.removeEventListener(event, stopPropagationKeyEvent, {
-              capture: true,
-            })
 
             if (!containerRef.current) return
             containerRef.current.removeEventListener(event, shadowRootKeyEvent)
-            containerRef.current.removeEventListener(
-              event,
-              shadowRootKeyEvent,
-              {
-                capture: true,
-              },
-            )
           })
         }
       })

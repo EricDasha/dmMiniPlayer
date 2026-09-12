@@ -8,6 +8,7 @@ import { OrPromise } from '@root/utils/typeUtils'
 
 export default class BiliBiliPreviewManager extends VideoPreviewManager {
   data: Awaited<ReturnType<typeof API_bilibili.getVideoShot>> | null = null
+  timeNodesMap = new Map<number, number>()
 
   asyncLock = new AsyncLock()
 
@@ -17,15 +18,23 @@ export default class BiliBiliPreviewManager extends VideoPreviewManager {
     this.asyncLock.ok()
 
     this.data = data
+    for (let i = 0; i < data.timeNodes.length; i++) {
+      this.timeNodesMap.set(data.timeNodes[i], i)
+    }
   }
 
   override getPreviewImage = switchLatest(async (currentTime: number) => {
     await this.asyncLock.waiting()
     if (!this.data) throw Error('no init')
 
-    const timeNodes = this.data.timeNodes
-    const oneFrameTIme = timeNodes[1] - timeNodes[0]
-    const frameIndex = Math.ceil(currentTime / oneFrameTIme)
+    const frameIndex = (() => {
+      let _time = ~~currentTime
+      while (true) {
+        const time = this.timeNodesMap.get(_time)
+        if (time) return time
+        _time--
+      }
+    })()
 
     const oneImageLength = this.data.xCount * this.data.yCount
     const imageIndex = Math.ceil(frameIndex / oneImageLength) - 1

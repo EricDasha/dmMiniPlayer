@@ -1,0 +1,48 @@
+name: Deploy element-picker playground
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'packages/element-picker/**'
+      - '.github/workflows/element-picker-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: element-picker-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm --filter @apad/element-picker playground:build
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/element-picker/
+      - name: Nest playground under /element-picker
+        run: |
+          mkdir -p pages/element-picker
+          cp -a packages/element-picker/playground/dist/. pages/element-picker/
+          printf '%s\n' '<!doctype html><meta http-equiv="refresh" content="0;url=./element-picker/">' > pages/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages
+      - id: deployment
+        uses: actions/deploy-pages@v4
