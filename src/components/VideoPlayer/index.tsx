@@ -4,7 +4,7 @@ import { CommonSubtitleManager } from '@root/core/SubtitleManager'
 import { ExtendComponent } from '@root/core/VideoPlayer/VideoPlayerBase'
 import { useOnce } from '@root/hook'
 import _env, { configStore } from '@root/store/config'
-import { formatTime, minmax, wait } from '@root/utils'
+import { formatTime, minmax, wait, dispatchClick } from '@root/utils'
 import { t } from '@root/utils/i18n'
 import { checkIsLive } from '@root/utils/video'
 import { default as classNames, default as cls } from 'classnames'
@@ -202,39 +202,36 @@ const VideoPlayer = observer(
         })
       }
     }, [isFirstPlay, eventListenMap])
-    useImperativeHandle(
-      ref,
-      (): VideoPlayerHandle => ({
-        setCurrentTime(time, isPause) {
-          if (isFirstPlay) setIsFirstPlay(false)
-          setTimeout(() => {
-            videoRef.current.currentTime = time
-            let isInBuffer = checkJumpInBufferArea(
-              videoRef.current.buffered,
-              time,
-            )
-            if (!isInBuffer) setLoading(true)
-            if (isPause) videoRef.current.pause()
-          }, 0)
-        },
-        pause() {
-          if (canPause) videoRef.current.pause()
-        },
-        play() {
-          playerOpause('play')
-        },
-        updateVideo(video) {
-          console.log('播放器更新视频', video)
-          videoRef.current = video
-          // if (video instanceof HTMLVideoElement) {
-          //   videoRef.current = video
-          // } else {
-          //   compVideoRef.current.srcObject = video
-          // }
-        },
-        ref: videoRef,
-      }),
-    )
+    useImperativeHandle(ref, (): VideoPlayerHandle => ({
+      setCurrentTime(time, isPause) {
+        if (isFirstPlay) setIsFirstPlay(false)
+        setTimeout(() => {
+          videoRef.current.currentTime = time
+          let isInBuffer = checkJumpInBufferArea(
+            videoRef.current.buffered,
+            time,
+          )
+          if (!isInBuffer) setLoading(true)
+          if (isPause) videoRef.current.pause()
+        }, 0)
+      },
+      pause() {
+        if (canPause) videoRef.current.pause()
+      },
+      play() {
+        playerOpause('play')
+      },
+      updateVideo(video) {
+        console.log('播放器更新视频', video)
+        videoRef.current = video
+        // if (video instanceof HTMLVideoElement) {
+        //   videoRef.current = video
+        // } else {
+        //   compVideoRef.current.srcObject = video
+        // }
+      },
+      ref: videoRef,
+    }))
 
     // 多个播放器标识
     const index = props.index ?? -1
@@ -316,7 +313,7 @@ const VideoPlayer = observer(
             e.preventDefault()
             if (isFirstPlay) playerOpause('play')
             else {
-              playBtnEl.current.click()
+              if (playBtnEl.current) dispatchClick(playBtnEl.current)
             }
 
             break

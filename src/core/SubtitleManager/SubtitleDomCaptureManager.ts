@@ -1,5 +1,5 @@
 import { OrPromise } from '@root/utils/typeUtils'
-import { dq, dq1, wait } from '@root/utils'
+import { dispatchMouse, dq, dq1, wait } from '@root/utils'
 import { logBox } from '@root/utils/logbox'
 import { ERROR_MSG } from '@root/shared/errorMsg'
 import { SubtitleItem, SubtitleRow } from './types'
@@ -17,8 +17,16 @@ type DataNode =
   | {
       type: 'event'
       event: Event
-      targetEl: string
+      /**选择器，或按文本找菜单项的 resolver（CSS 表达不了文本匹配） */
+      targetEl: string | (() => Element | null | undefined)
+      /**派发前等待目标出现的超时（ms），超时视为找不到 */
+      timeout?: number
+      /**派发后的等待 */
       wait?: number
+      /**找不到时中断后续字幕列表读取——防止读错面板污染选项 */
+      required?: boolean
+      /**链条中断后仍要执行（如收尾关闭菜单） */
+      alwaysRun?: boolean
     }
   | {
       type: 'subtitleElList'
@@ -42,6 +50,8 @@ export default abstract class SubtitleDomCaptureManager extends SubtitleManager 
     this.on('reset', () => {
       this.#hasObserveSubtitleDom = false
       this.#observeSubtitleDomUnlisten()
+      // 跨 init 复用的旧节点必须清掉，否则 YouTube 重排 DOM 后 click 会落到画质等其它选项上
+      this.#labelToClickChildElMap.clear()
     })
 
     const config = await this.getConfig()
@@ -49,19 +59,47 @@ export default abstract class SubtitleDomCaptureManager extends SubtitleManager 
     const console = logBox('SubtitleDomCaptureManager')
 
     let notHasSubtitleDomConfig = true
+    // required 事件找不到目标 → 链条中断：跳过后续事件与字幕列表读取，
+    // 绝不去读主菜单/画质面板（读错 = 把错误选项存成字幕）
+    let chainBroken = false
     for (const node of config) {
       switch (node.type) {
-        case 'event':
-          const tar = dq1(node.targetEl)
+        case 'event': {
+          if (chainBroken && !node.alwaysRun) break
+          const tar = await this.resolveEventTarget(node)
           if (!tar) {
-            console.log(`targetEl: ${node.targetEl} not found`)
-            continue
+            console.log(
+              `targetEl not found: ${
+                typeof node.targetEl === 'function'
+                  ? '<resolver>'
+                  : node.targetEl
+              }`,
+            )
+            if (node.required) chainBroken = true
+            break
           }
           console.log('tar', tar)
-          tar.dispatchEvent(node.event)
+          // 必须带真实坐标重建事件：config 里的模板事件坐标全是 (0,0)，
+          // 派出去会被坐标型处理器误命中左上角 logo
+          const template = node.event
+          if (template instanceof MouseEvent) {
+            dispatchMouse(tar, template.type, {
+              bubbles: template.bubbles,
+              cancelable: template.cancelable,
+              composed: template.composed,
+              detail: template.detail,
+            })
+          } else {
+            tar.dispatchEvent(template)
+          }
           await wait(node.wait ?? 50)
           break
+        }
         case 'subtitleElList':
+          if (chainBroken) {
+            console.log('skip subtitleElList: menu open chain broken')
+            break
+          }
           await wait(500)
           const container = dq(node.container).pop()
           if (!container) {
@@ -97,12 +135,28 @@ export default abstract class SubtitleDomCaptureManager extends SubtitleManager 
     }
     if (config.length) {
       await wait(500)
-      document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
       this.startObserveSubtitleDom()
     }
   }
 
   protected override listenVideoEvents(): void {}
+
+  /**轮询解析事件目标（菜单有开启动画，一次 dq 经常找不到） */
+  private async resolveEventTarget(
+    node: Extract<DataNode, { type: 'event' }>,
+  ): Promise<Element | undefined> {
+    const timeout = node.timeout ?? 1000
+    const deadline = Date.now() + timeout
+    for (;;) {
+      const el =
+        typeof node.targetEl === 'function'
+          ? node.targetEl()
+          : dq1(node.targetEl)
+      if (el) return el
+      if (Date.now() >= deadline || timeout <= 0) return undefined
+      await wait(50)
+    }
+  }
 
   #hasObserveSubtitleDom = false
   #observeSubtitleDomUnlisten = () => {}
@@ -137,8 +191,12 @@ export default abstract class SubtitleDomCaptureManager extends SubtitleManager 
       })
       observer.observe(container, { childList: true, subtree: true })
 
-      // this.addOnUnloadFn(() => observer.disconnect())
+      // 旧代码的 addOnUnloadFn 被注释掉了：此处是真正的 observer 清理入口。
+      // 注意 reset 事件也会走这里断开（见 onInit 的 reset 监听），否则重 init
+      // 后旧 observer 继续报 row-enter/row-leave，字幕闪烁
+      const prevUnlisten = this.#observeSubtitleDomUnlisten
       this.#observeSubtitleDomUnlisten = () => {
+        prevUnlisten()
         observer.disconnect()
         this.#observeSubtitleDomUnlisten = () => {}
       }
@@ -152,7 +210,12 @@ export default abstract class SubtitleDomCaptureManager extends SubtitleManager 
     this.activeSubtitleLabel = subtitleItemsLabel
 
     const el = this.#labelToClickChildElMap.get(subtitleItemsLabel)
-    if (el) {
+    // 节点可能已被 YouTube 回收/复用成其它选项（画质等）：脱离面板或文本对不上就绝不点
+    if (
+      el?.isConnected &&
+      el.closest('.ytp-panel-menu') &&
+      el.textContent === subtitleItemsLabel
+    ) {
       el.click()
     }
 

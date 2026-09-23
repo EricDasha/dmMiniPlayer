@@ -392,6 +392,19 @@ test.describe('ElementPicker', () => {
     await expect(panel).toHaveCount(0)
   })
 
+  test('stop removes the picking UI but keeps the selection', async ({
+    page,
+  }) => {
+    await createPicker(page, { type: 'single' })
+    await page.evaluate(() => {
+      window.__elementPickerPlayground.getPicker()?.stop()
+      return true
+    })
+    const state = await getState(page)
+    expect(state.overlay).toBe(false)
+    expect(state.pathBars).toBe(0)
+  })
+
   test('destroy removes overlay and selection', async ({ page }) => {
     await createPicker(page, { selector: ['.card'] })
     await page.evaluate(() => window.__elementPickerPlayground.destroyPicker())

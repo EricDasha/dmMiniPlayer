@@ -1,6 +1,6 @@
 import { SideSwitcher } from '@root/core/SideSwitcher'
 import useTargetEventListener from '@root/hook/useTargetEventListener'
-import { formatTime, formatView, isNumber } from '@root/utils'
+import { formatTime, formatView, isNumber, dispatchClick } from '@root/utils'
 import type { Rec } from '@root/utils/typeUtils'
 import classNames from 'classnames'
 import { observer } from 'mobx-react'
@@ -130,7 +130,9 @@ const VideoPlayerSideInner: FC<Props> = observer((props) => {
                             //     props.onChange?.(item)
                             //   })
                           } else {
-                            item.linkEl.click()
+                            // 统一走 dispatchClick：linkEl.click() 会产生 (0,0) 坐标的
+                            // 合成点击，极易被按坐标做 elementFromPoint 的处理器误命中左上角 logo
+                            dispatchClick(item.linkEl)
                             props.onChange?.(item)
                           }
                           setActiveMap((map) => ({ ...map, [vi]: ii }))

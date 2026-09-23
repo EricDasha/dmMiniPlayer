@@ -6,6 +6,7 @@ import { useOnce } from '@root/hook'
 import { PlayerEvent } from '@root/core/event'
 import { useMemoizedFn } from 'ahooks'
 import toast from 'react-hot-toast'
+import { dispatchClick } from '@root/utils'
 import vpContext from '../context'
 import ActionButton from './ActionButton'
 
@@ -34,7 +35,7 @@ const Pre: FC<Props> = (props) => {
 
   const handleClick = useMemoizedFn(() => {
     const item = mainList.items[index - 1]
-    item.linkEl.click()
+    dispatchClick(item.linkEl)
     toast(item.title)
   })
 
@@ -65,7 +66,7 @@ const Next: FC<Props> = (props) => {
 
   const handleClick = useMemoizedFn(() => {
     const item = mainList.items[index + 1]
-    item.linkEl.click()
+    dispatchClick(item.linkEl)
     toast(item.title)
   })
 

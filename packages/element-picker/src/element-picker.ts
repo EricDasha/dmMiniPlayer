@@ -76,6 +76,8 @@ export class ElementPicker {
   >()
 
   private onMouseMove = (event: MouseEvent) => {
+    // 合成事件（如字幕抓取的假 mousemove，坐标多为 0,0）不参与拾取，否则会去点左上角 logo
+    if (!event.isTrusted) return
     const pathEl = this.overlay.pathElementFromEvent(event)
     if (pathEl) {
       if (this.hoverEl === pathEl) return
@@ -91,6 +93,8 @@ export class ElementPicker {
   }
 
   private onClick = (event: MouseEvent) => {
+    // 合成 click 默认坐标 (0,0)，正好落在左上角 logo：拾取器只认用户真实点击
+    if (!event.isTrusted) return
     if (event.button !== 0) return
     const pathEl = this.overlay.pathElementFromEvent(event)
     if (pathEl) {
@@ -108,6 +112,7 @@ export class ElementPicker {
   }
 
   private onContextMenu = (event: MouseEvent) => {
+    if (!event.isTrusted) return
     if (this.type !== 'list' || this.isPickerEvent(event)) return
     const el = deepElementFromPoint(this.doc, event.clientX, event.clientY)
     if (!el) return
@@ -188,6 +193,11 @@ export class ElementPicker {
     this.doc.removeEventListener('click', this.onClick, true)
     this.doc.removeEventListener('contextmenu', this.onContextMenu, true)
     this.doc.removeEventListener('keydown', this.onKeyDown, true)
+
+    // 停止后必须卸载 UI：panel 是 pointer-events:auto 且盖住播放器控制条，
+    // 留在页上会让用户误以为设置选项“被破坏”（点不动/点错）
+    this.overlay.unmount()
+    this.panel.unmount()
 
     this.emit('stop', undefined)
     return this

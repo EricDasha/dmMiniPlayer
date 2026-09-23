@@ -28,7 +28,12 @@ export default class YoutubeProvider extends HtmlDanmakuProvider {
 
   override async onPlayerInitd() {
     this.initSideSwitcherData()
+    let lastPath = location.pathname
     const routeUnlisten = onRouteChange(() => {
+      // pushState 不一定换视频（&t= 时间戳等只改参数）：路径没变就不重跑字幕抓取，
+      // 否则设置菜单会被反复开合打断用户操作
+      if (location.pathname === lastPath) return
+      lastPath = location.pathname
       setTimeout(() => {
         this.update()
         this.initSideSwitcherData()
@@ -43,7 +48,8 @@ export default class YoutubeProvider extends HtmlDanmakuProvider {
       }, 500)
       const ob = new MutationObserver((e) => {
         initSideSwitcherData()
-        this.update()
+        // 侧栏属性变化和当前视频的字幕/预览无关：禁止在这里重跑 update()
+        //（否则字幕抓取的合成点击会被高频重复触发，冲掉用户正开着的设置菜单）
       })
       ob.observe(listDom, { attributes: true })
 

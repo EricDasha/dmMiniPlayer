@@ -2,6 +2,7 @@ import { onMessage, sendMessage } from 'webext-bridge/content-script'
 import configStore from '@root/store/config'
 import {
   createElement,
+  dispatchClick,
   dq,
   getDeepPrototype,
   tryCatch,
@@ -271,7 +272,9 @@ export default abstract class WebProvider
             break
           }
           case 'hide': {
-            document.body.click()
+            // 禁止裸 body.click()：合成 click 默认坐标 (0,0)，正好落在
+            // masthead/ytd-logo 区，极易误触回主页。用视口中心坐标派发
+            dispatchClick(document.body)
             if (document.pictureInPictureElement)
               document.exitPictureInPicture()
             if (window.documentPictureInPicture?.window) {
