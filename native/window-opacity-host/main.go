@@ -19,9 +19,11 @@ import (
 )
 
 const (
-	gwlExStyle        = ^uintptr(19) // -20
-	wsExLayered       = 0x00080000
-	wsExTransparent   = 0x00000020
+	gwlExStyle      = ^uintptr(19) // -20
+	wsExLayered     = 0x00080000
+	wsExTransparent = 0x00000020
+	smCxScreen      = 0
+	smCyScreen      = 1
 	lwaAlpha          = 0x00000002
 	swpNoSize         = 0x0001
 	swpNoMove         = 0x0002
@@ -38,6 +40,15 @@ const (
 	// 物理像素/CSS像素 的比例最大为 DPR²（最高≈4），再加上标题与边界偏移的裕量。
 	// 超过该倍数即视为误选了浏览器主窗口等大窗，直接拒绝匹配，防止把整个浏览器变透明。
 	maxAreaRatio = 6
+	// 必须精确匹配 docPIP 独占标题标记才允许命中：包含/子串匹配会误伤
+	// 浏览器主窗口与最大化游戏/浏览器等大窗口，一律拒绝。
+	markerTitle = "dmminiplayer-pip"
+	// host 版本：ping 时回传，用于确认扩展连接的是新二进制（旧二进制无此字段）。
+	hostVersion = "1.1.0"
+	// 打开 PiP 时 document.title 传播到 OS 原生 HWND 标题是异步的，
+	// 首次枚举常落在标题生效之前。失败后短重试，命中即停，杜绝“概率失效”。
+	findRetryAttempts = 3
+	findRetryDelayMs  = 40
 )
 
 var (
@@ -54,6 +65,8 @@ var (
 	procSetWindowPos               = user32.NewProc("SetWindowPos")
 	procGetLayeredWindowAttributes = user32.NewProc("GetLayeredWindowAttributes")
 	procSetLayeredWindowAttributes = user32.NewProc("SetLayeredWindowAttributes")
+	procIsZoomed                   = user32.NewProc("IsZoomed")
+	procGetSystemMetrics           = user32.NewProc("GetSystemMetrics")
 	procRegDeleteTreeW             = advapi32.NewProc("RegDeleteTreeW")
 )
 
@@ -86,6 +99,11 @@ type response struct {
 	Uninstalled bool   `json:"uninstalled,omitempty"`
 	CursorX     *int32 `json:"cursorX,omitempty"`
 	CursorY     *int32 `json:"cursorY,omitempty"`
+	Version     string `json:"version,omitempty"`
+	// not-found 时的诊断信息：枚举到的可见窗口数、其中标题精确命中 marker 的个数。
+	// 若 titleMatches 恒为 0，说明 marker 尚未/未传播到原生标题，需要核对标题链路。
+	Enumerated   int `json:"enumerated,omitempty"`
+	TitleMatches int `json:"titleMatches,omitempty"`
 }
 
 type point struct {
@@ -145,7 +163,7 @@ func main() {
 func handle(req request) response {
 	switch req.Command {
 	case "ping":
-		return response{OK: true}
+		return response{OK: true, Version: hostVersion}
 	case "setOpacity":
 		return setOpacity(req, clamp(req.Opacity, minOpacity, maxOpacity))
 	case "setMousePassthrough":
@@ -173,12 +191,13 @@ func getCursorPosition() response {
 }
 
 func setPosition(req request) response {
-	win, ok, err := findBestWindowByBounds(req)
+	win, ok, diag, err := findBestWindowAll(req, true)
 	if err != nil {
 		return response{OK: false, Error: err.Error()}
 	}
 	if !ok {
-		return response{OK: false, Error: "target window not found by bounds"}
+		return response{OK: false, Error: "target window not found by bounds",
+			Enumerated: diag.enumerated, TitleMatches: diag.titleMatches}
 	}
 	if err := animateWindowPosition(win.hwnd, win.bounds, req.Left, req.Top, req.SmoothMs); err != nil {
 		return response{OK: false, Error: err.Error()}
@@ -218,12 +237,13 @@ func utf16Ptr(value string) *uint16 {
 }
 
 func resetWindow(req request) response {
-	win, ok, err := findBestWindow(req)
+	win, ok, diag, err := findBestWindowAll(req, false)
 	if err != nil {
 		return response{OK: false, Error: err.Error()}
 	}
 	if !ok {
-		return response{OK: false, Error: "target window not found"}
+		return response{OK: false, Error: "target window not found",
+			Enumerated: diag.enumerated, TitleMatches: diag.titleMatches}
 	}
 	if err := setWindowMousePassthrough(win.hwnd, false); err != nil {
 		return response{OK: false, Error: err.Error()}
@@ -232,12 +252,13 @@ func resetWindow(req request) response {
 }
 
 func setOpacity(req request, opacity int) response {
-	win, ok, err := findBestWindow(req)
+	win, ok, diag, err := findBestWindowAll(req, false)
 	if err != nil {
 		return response{OK: false, Error: err.Error()}
 	}
 	if !ok {
-		return response{OK: false, Error: "target window not found"}
+		return response{OK: false, Error: "target window not found",
+			Enumerated: diag.enumerated, TitleMatches: diag.titleMatches}
 	}
 	return setWindowOpacity(win, opacity, req.SmoothMs)
 }
@@ -261,12 +282,13 @@ func setWindowOpacity(win windowInfo, opacity int, smoothMs int) response {
 }
 
 func setMousePassthrough(req request, enabled bool) response {
-	win, ok, err := findBestWindowByBounds(req)
+	win, ok, diag, err := findBestWindowAll(req, true)
 	if err != nil {
 		return response{OK: false, Error: err.Error()}
 	}
 	if !ok {
-		return response{OK: false, Error: "target window not found by bounds"}
+		return response{OK: false, Error: "target window not found by bounds",
+			Enumerated: diag.enumerated, TitleMatches: diag.titleMatches}
 	}
 
 	if err := setWindowMousePassthrough(win.hwnd, enabled); err != nil {
@@ -281,19 +303,46 @@ func setMousePassthrough(req request, enabled bool) response {
 	}
 }
 
-func findBestWindowByBounds(req request) (windowInfo, bool, error) {
+func titleMatchScore(winTitle string, titles []string) int {
+	// 只有精确匹配独占标记才算命中：包含/子串一律 0，
+	// 否则最大化游戏/浏览器这类标题相近的大窗会被误伤。
+	title := normalizeTitle(winTitle)
+	for _, candidate := range titles {
+		if candidate == "" {
+			continue
+		}
+		if title == candidate {
+			return 300
+		}
+	}
+	return 0
+}
+
+// 枚举到的窗口是否是 docPIP：必须精确等于独占 marker。
+func isMarkerWindow(winTitle string) bool {
+	return normalizeTitle(winTitle) == markerTitle
+}
+
+func selectBestWindowByBounds(windows []windowInfo, req request) (windowInfo, bool) {
 	if !hasBounds(req.Bounds) {
-		return windowInfo{}, false, nil
+		return windowInfo{}, false
 	}
-
-	windows, err := enumWindows()
-	if err != nil {
-		return windowInfo{}, false, err
+	titles := normalizeTitles(req)
+	if len(titles) == 0 {
+		return windowInfo{}, false
 	}
-
 	bestDistance := math.MaxInt
 	var best windowInfo
 	for _, win := range windows {
+		// 只考虑标题精确匹配 marker 的窗口：游戏/浏览器/聊天窗口即使
+		// bounds 重合也直接跳过，从根上杜绝误伤大窗口。
+		if titleMatchScore(win.title, titles) == 0 {
+			continue
+		}
+		// 最大化/全屏窗口永远不是 docPIP：即使标题伪装也拒绝。
+		if isMaximizedOrFullscreen(win.hwnd, win.bounds) {
+			continue
+		}
 		distance := windowBoundsDistance(win.bounds, req.Bounds)
 		if distance < bestDistance {
 			bestDistance = distance
@@ -302,12 +351,12 @@ func findBestWindowByBounds(req request) (windowInfo, bool, error) {
 	}
 
 	if bestDistance > boundsTolerance*4 {
-		return windowInfo{}, false, nil
+		return windowInfo{}, false
 	}
 	if !isReasonableAreaMatch(best, req.Bounds) {
-		return windowInfo{}, false, nil
+		return windowInfo{}, false
 	}
-	return best, true, nil
+	return best, true
 }
 
 func setWindowMousePassthrough(hwnd uintptr, enabled bool) error {
@@ -429,30 +478,93 @@ func setWindowAlpha(hwnd uintptr, alpha int) error {
 	return nil
 }
 
-func findBestWindow(req request) (windowInfo, bool, error) {
-	windows, err := enumWindows()
-	if err != nil {
-		return windowInfo{}, false, err
+type findDiagnostics struct {
+	enumerated   int
+	titleMatches int
+}
+
+// findBestWindowAll 按 `useBounds` 选择匹配策略，并在标题异步传播期间短重试。
+// 每次失败都会带着最新诊断信息，命中即停；确保打开 PiP 的“概率失效/误伤窗口”
+// 被换成确定性的「找到 pip 或明确报 not found」。
+func findBestWindowAll(req request, useBounds bool) (windowInfo, bool, findDiagnostics, error) {
+	titles := normalizeTitles(req)
+	// 无标题可匹配时立刻拒绝，杜绝无谓枚举和“矮子里拔将军”。
+	if len(titles) == 0 {
+		return windowInfo{}, false, findDiagnostics{}, nil
 	}
 
-	titles := normalizeTitles(req)
-	bestScore := math.MinInt
-	var best windowInfo
-	for _, win := range windows {
-		score := scoreWindow(win, titles, req.Bounds)
-		if score > bestScore {
-			bestScore = score
-			best = win
+	var diag findDiagnostics
+	for attempt := 0; attempt < findRetryAttempts; attempt++ {
+		windows, err := enumWindows()
+		if err != nil {
+			return windowInfo{}, false, diag, err
+		}
+		diag.enumerated = len(windows)
+		diag.titleMatches = 0
+		for _, win := range windows {
+			if isMarkerWindow(win.title) {
+				diag.titleMatches++
+			}
+		}
+
+		var best windowInfo
+		var ok bool
+		if useBounds {
+			best, ok = selectBestWindowByBounds(windows, req)
+		} else {
+			best, ok = selectBestWindow(windows, titles, req.Bounds)
+		}
+		if ok {
+			return best, true, diag, nil
+		}
+		if attempt < findRetryAttempts-1 {
+			time.Sleep(findRetryDelayMs * time.Millisecond)
 		}
 	}
+	return windowInfo{}, false, diag, nil
+}
 
-	if bestScore < 180 {
-		return windowInfo{}, false, nil
+func selectBestWindow(windows []windowInfo, titles []string, target bounds) (windowInfo, bool) {
+	if len(titles) == 0 {
+		return windowInfo{}, false
 	}
-	if !isReasonableAreaMatch(best, req.Bounds) {
-		return windowInfo{}, false, nil
+	bestDistance := math.MaxInt
+	var best windowInfo
+	found := false
+	for _, win := range windows {
+		if titleMatchScore(win.title, titles) == 0 {
+			continue
+		}
+		if isMaximizedOrFullscreen(win.hwnd, win.bounds) {
+			continue
+		}
+		if hasBounds(target) {
+			distance := windowBoundsDistance(win.bounds, target)
+			if distance > boundsTolerance*4 {
+				continue
+			}
+			if distance < bestDistance {
+				bestDistance = distance
+				best = win
+				found = true
+			}
+			continue
+		}
+		// 无 bounds：只接受唯一的 marker 窗口，多个则拒绝避免误伤。
+		if found {
+			return windowInfo{}, false
+		}
+		best = win
+		found = true
 	}
-	return best, true, nil
+
+	if !found {
+		return windowInfo{}, false
+	}
+	if !isReasonableAreaMatch(best, target) {
+		return windowInfo{}, false
+	}
+	return best, true
 }
 
 func enumWindows() ([]windowInfo, error) {
@@ -517,11 +629,12 @@ func scoreWindow(win windowInfo, titles []string, target bounds) int {
 	score := 0
 	title := normalizeTitle(win.title)
 	for _, candidate := range titles {
-		switch {
-		case title == candidate:
+		if candidate == "" {
+			continue
+		}
+		// 精确匹配才给分：包含/子串一律 0，避免大窗口靠标题相近偷分。
+		if title == candidate {
 			score = max(score, 300)
-		case strings.Contains(title, candidate), strings.Contains(candidate, title):
-			score = max(score, 210)
 		}
 	}
 
@@ -545,11 +658,14 @@ func windowBoundsDistance(a bounds, b bounds) int {
 }
 
 func normalizeTitles(req request) []string {
+	// 只保留独占 marker：老版本扩展曾把页面标题（如 "YouTube"）发过来，
+	// 而浏览器主窗口标题恰好是 "YouTube - Google Chrome"（归一化后完全相等），
+	// 不过滤就会精确命中浏览器大窗口。宁可找不到，也绝不误伤。
 	seen := map[string]bool{}
 	var titles []string
 	for _, title := range append([]string{req.Title}, req.Titles...) {
 		title = normalizeTitle(title)
-		if title == "" || seen[title] {
+		if title == "" || title != markerTitle || seen[title] {
 			continue
 		}
 		seen[title] = true
@@ -569,10 +685,31 @@ func hasBounds(b bounds) bool {
 	return b.Width > 0 && b.Height > 0
 }
 
-// 防止把浏览器主窗口误判成 docPIP：
+// 防止把浏览器主窗口/最大化游戏误判成 docPIP：
 // JS 上报的 bounds 是 CSS 像素，GetWindowRect 返回物理像素，二者面积最多差 DPR²（≈4）。
 // 若候选窗口面积远超目标窗口，则它更可能是带标题栏/侧栏的浏览器主窗口，而不是小画中画。
+// 额外护栏：候选窗口绝不能是最大化/全屏（覆盖整个屏幕），docPIP 永远是小浮窗。
+func isMaximizedOrFullscreen(hwnd uintptr, b bounds) bool {
+	if hwnd != 0 {
+		if zoomed, _, _ := procIsZoomed.Call(hwnd); zoomed != 0 {
+			return true
+		}
+	}
+	cx, _, _ := procGetSystemMetrics.Call(smCxScreen)
+	cy, _, _ := procGetSystemMetrics.Call(smCyScreen)
+	if cx > 0 && cy > 0 && b.Width >= int(cx) && b.Height >= int(cy) {
+		return true
+	}
+	return false
+}
+
 func isReasonableAreaMatch(win windowInfo, target bounds) bool {
+	if !isMarkerWindow(win.title) {
+		return false
+	}
+	if isMaximizedOrFullscreen(win.hwnd, win.bounds) {
+		return false
+	}
 	if !hasBounds(target) {
 		return true
 	}

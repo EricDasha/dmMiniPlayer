@@ -146,6 +146,17 @@ const probeNativeWindowOpacity = async (force = false) => {
   }
 
   const response = await sendNativeWindowOpacityMessage({ command: 'ping' })
+  if (response.ok) {
+    // host 版本用于确认连接的是新二进制；旧 host 不带 version 字段。
+    // 若这里拿不到 version，说明装的还是旧 exe，需重新构建并重装 native host。
+    if (response.version) {
+      console.log('[dmMiniPlayer] native host version', response.version)
+    } else {
+      console.warn(
+        '[dmMiniPlayer] native host 未返回 version，可能仍是旧二进制，请重新构建并重装 native host',
+      )
+    }
+  }
   nativeWindowOpacityAvailable = !!response.ok
   return nativeWindowOpacityAvailable
 }
@@ -237,6 +248,13 @@ onMessage(WebextEvent.setNativeWindowOpacity, async ({ data }) => {
     ...data,
   })
   if (response.ok) nativeWindowOpacityAvailable = true
+  if (!response.ok && response.titleMatches === 0) {
+    // 枚举里一个 marker 都没有：说明 marker 尚未/未传播到原生窗口标题。
+    // 这是标题链路问题（需核对 pipWindow.document.title 是否真的生效），不是选窗误判。
+    console.warn(
+      `[dmMiniPlayer] setOpacity target not found: enumerated=${response.enumerated} titleMatches=${response.titleMatches} error=${response.error}`,
+    )
+  }
   return !!response.ok
 })
 

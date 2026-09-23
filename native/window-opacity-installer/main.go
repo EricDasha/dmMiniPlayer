@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -53,6 +54,10 @@ const (
 
 	swShow = 5
 
+	wmUser            = 0x0400
+	wmRefreshStatus   = wmUser + 1
+	mutexInstanceName = `Local\dmMiniPlayer_Installer_SingleInstance`
+
 	hkeyCurrentUser   = 0x80000001
 	keySetValue       = 0x0002
 	keyRead           = 0x20019
@@ -61,29 +66,35 @@ const (
 )
 
 var (
-	user32               = syscall.NewLazyDLL("user32.dll")
-	kernel32             = syscall.NewLazyDLL("kernel32.dll")
-	advapi32             = syscall.NewLazyDLL("advapi32.dll")
-	shell32              = syscall.NewLazyDLL("shell32.dll")
-	procRegisterClassExW = user32.NewProc("RegisterClassExW")
-	procCreateWindowExW  = user32.NewProc("CreateWindowExW")
-	procDefWindowProcW   = user32.NewProc("DefWindowProcW")
-	procDestroyWindow    = user32.NewProc("DestroyWindow")
-	procPostQuitMessage  = user32.NewProc("PostQuitMessage")
-	procGetMessageW      = user32.NewProc("GetMessageW")
-	procTranslateMessage = user32.NewProc("TranslateMessage")
-	procDispatchMessageW = user32.NewProc("DispatchMessageW")
-	procSendMessageW     = user32.NewProc("SendMessageW")
-	procSetWindowTextW   = user32.NewProc("SetWindowTextW")
-	procGetWindowTextW   = user32.NewProc("GetWindowTextW")
-	procLoadCursorW      = user32.NewProc("LoadCursorW")
-	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
-	procRegCreateKeyExW  = advapi32.NewProc("RegCreateKeyExW")
-	procRegOpenKeyExW    = advapi32.NewProc("RegOpenKeyExW")
-	procRegSetValueExW   = advapi32.NewProc("RegSetValueExW")
-	procRegDeleteTreeW   = advapi32.NewProc("RegDeleteTreeW")
-	procRegCloseKey      = advapi32.NewProc("RegCloseKey")
-	procShellExecuteW    = shell32.NewProc("ShellExecuteW")
+	user32                  = syscall.NewLazyDLL("user32.dll")
+	kernel32                = syscall.NewLazyDLL("kernel32.dll")
+	advapi32                = syscall.NewLazyDLL("advapi32.dll")
+	shell32                 = syscall.NewLazyDLL("shell32.dll")
+	procRegisterClassExW    = user32.NewProc("RegisterClassExW")
+	procCreateWindowExW     = user32.NewProc("CreateWindowExW")
+	procDefWindowProcW      = user32.NewProc("DefWindowProcW")
+	procDestroyWindow       = user32.NewProc("DestroyWindow")
+	procPostQuitMessage     = user32.NewProc("PostQuitMessage")
+	procGetMessageW         = user32.NewProc("GetMessageW")
+	procTranslateMessage    = user32.NewProc("TranslateMessage")
+	procDispatchMessageW    = user32.NewProc("DispatchMessageW")
+	procSendMessageW        = user32.NewProc("SendMessageW")
+	procPostMessageW        = user32.NewProc("PostMessageW")
+	procSetWindowTextW      = user32.NewProc("SetWindowTextW")
+	procGetWindowTextW      = user32.NewProc("GetWindowTextW")
+	procGetClassNameW       = user32.NewProc("GetClassNameW")
+	procEnumWindows         = user32.NewProc("EnumWindows")
+	procLoadCursorW         = user32.NewProc("LoadCursorW")
+	procGetModuleHandleW    = kernel32.NewProc("GetModuleHandleW")
+	procRegCreateKeyExW     = advapi32.NewProc("RegCreateKeyExW")
+	procRegOpenKeyExW       = advapi32.NewProc("RegOpenKeyExW")
+	procRegSetValueExW      = advapi32.NewProc("RegSetValueExW")
+	procRegDeleteTreeW      = advapi32.NewProc("RegDeleteTreeW")
+	procRegCloseKey         = advapi32.NewProc("RegCloseKey")
+	procShellExecuteW       = shell32.NewProc("ShellExecuteW")
+	procCreateMutexW        = kernel32.NewProc("CreateMutexW")
+	procSetForegroundWindow = user32.NewProc("SetForegroundWindow")
+	procReleaseMutex        = kernel32.NewProc("ReleaseMutex")
 
 	extensionIDPattern = regexp.MustCompile(`^[a-p]{32}$`)
 
@@ -144,6 +155,23 @@ func main() {
 }
 
 func runGUI() error {
+	// 锁定调用线程为 UI 线程：窗口创建、消息循环、wndProc 回调全部在同一 OS 线程，
+	// 避免 Go 调度在回调间切换 M 造成窗口短暂无响应
+	runtime.LockOSThread()
+
+	// 单实例互斥：已有实例运行时只弹出其窗口到前台，避免窗口类重复注册/冲突
+	mutexRet, _, mutexErr := procCreateMutexW.Call(0, 0, uintptr(unsafe.Pointer(utf16Ptr(mutexInstanceName))))
+	if errno, ok := mutexErr.(syscall.Errno); ok && errno == 183 { // ERROR_ALREADY_EXISTS
+		existingWnd := findExistingInstallerWindow()
+		if existingWnd != 0 {
+			procSetForegroundWindow.Call(existingWnd)
+		}
+		if mutexRet != 0 {
+			procReleaseMutex.Call(mutexRet)
+		}
+		return nil
+	}
+
 	hInstance, _, _ := procGetModuleHandleW.Call(0)
 	className := utf16Ptr("DMMPWindowOpacityInstaller")
 	cursor, _, _ := procLoadCursorW.Call(0, uintptr(32512))
@@ -194,6 +222,9 @@ func wndProc(hwnd uintptr, message uint32, wParam, lParam uintptr) uintptr {
 	case wmCreate:
 		createControls(hwnd)
 		return 0
+	case wmRefreshStatus:
+		go refreshStatus()
+		return 0
 	case wmCommand:
 		switch loword(wParam) {
 		case addIDButtonID:
@@ -229,7 +260,8 @@ func createControls(hwnd uintptr) {
 	createControl("BUTTON", "打开工具目录", wsChild|wsVisible|wsTabStop, 318, 228, 150, 32, hwnd, openFolderButton)
 	createControl("BUTTON", "打开所选 ID 目录", wsChild|wsVisible|wsTabStop, 478, 228, 162, 32, hwnd, openSelectedDirID)
 	statusStatic = createControl("STATIC", "正在读取安装状态……", wsChild|wsVisible|ssLeft, 18, 278, 620, 150, hwnd, statusStaticID)
-	refreshStatus()
+	// 状态读取（读注册表/文件）不在 WM_CREATE 里同步执行，避免窗口未创建完就阻塞导致"未响应"
+	procPostMessageW.Call(hwnd, wmRefreshStatus, 0, 0)
 }
 
 func createControl(className, text string, style uintptr, x, y, w, h int, parent uintptr, id uintptr) uintptr {
@@ -622,4 +654,23 @@ func loword(value uintptr) uintptr {
 func utf16Ptr(value string) *uint16 {
 	ptr, _ := syscall.UTF16PtrFromString(value)
 	return ptr
+}
+
+func findExistingInstallerWindow() uintptr {
+	var found uintptr
+	callback := syscall.NewCallback(func(hwnd uintptr, lparam uintptr) uintptr {
+		var cls [64]uint16
+		ret, _, _ := procGetClassNameW.Call(hwnd, uintptr(unsafe.Pointer(&cls[0])), uintptr(len(cls)))
+		if ret == 0 {
+			return 1
+		}
+		className := syscall.UTF16ToString(cls[:])
+		if className == "DMMPWindowOpacityInstaller" {
+			found = hwnd
+			return 0 // stop enumeration
+		}
+		return 1
+	})
+	procEnumWindows.Call(callback, 0)
+	return found
 }

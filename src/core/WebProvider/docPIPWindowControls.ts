@@ -1,4 +1,5 @@
 import WebextEvent from '@root/shared/webextEvent'
+import { NATIVE_WINDOW_TITLE_MARKER } from '@root/shared/nativeWindowOpacity'
 import configStore, { updateConfig } from '@root/store/config'
 import { getDocPIPBorderSize } from '@root/utils/docPIP'
 import { autorun, reaction } from 'mobx'
@@ -59,12 +60,12 @@ export const attachPIPWindowControls = (
 
   const animateAutoDock = async (targetLeft: number, targetTop?: number) => {
     const generation = ++autoDockAnimationGeneration
-    const title = pipWindow.document.title || document.title
+    // 必须只发独占 marker：回落到 document.title 会把页面标题发给 host，
+    // 而浏览器主窗口标题恰好就是该页面标题，会被精确命中导致误伤大窗口。
+    const title = NATIVE_WINDOW_TITLE_MARKER
     const moved = await sendMessage(WebextEvent.setNativeWindowPosition, {
       title,
-      titles: [title, document.title].filter(
-        (value, index, list) => value && list.indexOf(value) === index,
-      ),
+      titles: [title].filter(Boolean),
       bounds: {
         left: pipWindow.screenLeft,
         top: pipWindow.screenTop,

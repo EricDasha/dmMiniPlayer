@@ -6,6 +6,7 @@ import configStore, {
   videoBorderType,
 } from '@root/store/config'
 import type { NativeWindowOpacityTarget } from '@root/shared/nativeWindowOpacity'
+import { NATIVE_WINDOW_TITLE_MARKER } from '@root/shared/nativeWindowOpacity'
 import { calculateNewDimensions, createElement } from '@root/utils'
 import { getDocPIPBorderSize } from '@root/utils/docPIP'
 import {
@@ -37,15 +38,13 @@ export default class DocPIPWebProvider extends WebProvider {
   private getNativeWindowOpacityTarget(
     pipWindow: Window,
   ): NativeWindowOpacityTarget {
+    // marker 为空（异常路径）时必须中断，不能回落发页面标题：
+    // 页面标题与浏览器主窗口标题相同，host 会精确命中浏览器大窗口。
+    const marker = this.nativeWindowOpacityTargetTitle || NATIVE_WINDOW_TITLE_MARKER
     return {
-      title: this.nativeWindowOpacityTargetTitle,
-      titles: [
-        this.nativeWindowOpacityTargetTitle,
-        pipWindow.document.title,
-        document.title,
-        location.hostname,
-        location.host,
-      ].filter((title, index, list) => title && list.indexOf(title) === index),
+      title: marker,
+      // 只发 docPIP 独占标题标记：浏览器主窗口不匹配，避免误伤
+      titles: [marker].filter(Boolean),
       bounds: {
         left: pipWindow.screenLeft,
         top: pipWindow.screenTop,
@@ -149,11 +148,10 @@ export default class DocPIPWebProvider extends WebProvider {
       saveConfig()
     }
 
-    // 在标题后添加 ' - PIP'
+    // 页面标题加 ' - PIP' 便于识别（仅视觉）；docPIP 窗口用独占标题标记让 native host 精确匹配
     const title = document.title
-    const pipTitle = title + ' - PIP'
-    this.nativeWindowOpacityTargetTitle = pipTitle
-    document.title = pipTitle
+    document.title = title + ' - PIP'
+    this.nativeWindowOpacityTargetTitle = NATIVE_WINDOW_TITLE_MARKER
 
     // 获取应该有的docPIP宽高
     const pipWindowConfig = await getBrowserSyncStorage(PIP_WINDOW_CONFIG)
@@ -196,6 +194,10 @@ export default class DocPIPWebProvider extends WebProvider {
       height,
     })
     this.pipWindow = pipWindow
+    // 让 docPIP 窗口的 Windows 标题变成独占标记，native host 靠它精确匹配。
+    // 必须写死 marker：host 侧只认精确相等，任何页面标题回落都会误伤浏览器大窗口。
+    pipWindow.document.title = NATIVE_WINDOW_TITLE_MARKER
+    this.nativeWindowOpacityTargetTitle = NATIVE_WINDOW_TITLE_MARKER
     await this.syncNativeWindowOpacity(pipWindow)
     const pipWindowControls = attachPIPWindowControls(pipWindow, () => {
       this.syncNativeWindowOpacity(pipWindow)

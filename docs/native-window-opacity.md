@@ -66,3 +66,22 @@ GUI：
 - native host 不可用时不会改变整个 Windows 窗口透明度；鼠标穿透会退回扩展内 CSS 行为，无法点击到下方应用。
 - 关闭 PiP 时会把目标窗口透明度恢复为 100%，并解除 native 鼠标穿透。
 - 真鼠标穿透只修改顶层 PiP 窗口，不修改 Chromium 子窗口，避免白屏/渲染丢失。
+
+### 窗口匹配与误伤防护
+
+Host 只认 docPIP 窗口的独占标题标记（`dmMiniPlayer-PIP`）精确相等才会命中：浏览器主窗口、标签页、窗口化全屏游戏、最大化窗口统统不匹配，宁可找不到也绝不误改。叠加护栏包括：
+
+- 标题只允许精确等于独占标记：包含/子串匹配一律拒绝，封死“标题相近”的大窗偷分。
+- 最大化（`IsZoomed`）或覆盖全屏尺寸的窗口直接跳过。
+- 上报 bounds 与枚举 bounds 的距离超限或面积比例超 6 倍（DPR² 裕量）时拒绝。
+- 打开 PiP 时 OS 原生标题是异步传播的：host 在标题生效前会短重试（最多 3 次、间隔 40ms），把“打开瞬间的概率失效”变成确定性结果。
+
+### 版本与排障
+
+- `ping` 会回传 `version`。扩展控制台会打印连接到的 host 版本；若提示“仍是旧二进制”，请重新构建并重装：
+  ```powershell
+  .\scripts\build-native-opacity-tools.ps1
+  .\build\native\dmmp-window-opacity-installer.exe
+  重启浏览器
+  ```
+- `setOpacity` 找不到目标时返回 `enumerated`（枚举到的可见窗口数）与 `titleMatches`（标题精确命中 marker 的个数）。若 `titleMatches` 恒为 0，说明 marker 未传播到原生标题，属于标题链路问题而非选窗误判。
