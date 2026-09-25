@@ -20,8 +20,10 @@ import (
 
 const (
 	gwlExStyle      = ^uintptr(19) // -20
+	gwlStyle       = ^uintptr(15) // -16
 	wsExLayered     = 0x00080000
 	wsExTransparent = 0x00000020
+	wsPopup         = 0x80000000
 	smCxScreen      = 0
 	smCyScreen      = 1
 	lwaAlpha          = 0x00000002
@@ -42,7 +44,13 @@ const (
 	maxAreaRatio = 6
 	// 必须精确匹配 docPIP 独占标题标记才允许命中：包含/子串匹配会误伤
 	// 浏览器主窗口与最大化游戏/浏览器等大窗口，一律拒绝。
-	markerTitle = "dmminiplayer-pip"
+	// 实测发现（Edge/Chrome 146+）：pipWindow.document.title 不会传播到
+	// OS 原生 HWND；Chrome 快照的是「开窗时刻源页 document.title」——
+	// 扩展在源页标题尾部追加了 ' - PIP'，所以 docPIP 的 HWND 标题
+	// 一定以 ' - pip' 结尾。用「后缀 + 窗口类 + 非最大化 + 面积护栏」
+	// 多重约束替代纯 marker 精确匹配。
+	markerTitle     = "dmminiplayer-pip"
+	docPIPtitleTail = " - pip"
 	// host 版本：ping 时回传，用于确认扩展连接的是新二进制（旧二进制无此字段）。
 	hostVersion = "1.1.0"
 	// 打开 PiP 时 document.title 传播到 OS 原生 HWND 标题是异步的，
@@ -67,6 +75,7 @@ var (
 	procSetLayeredWindowAttributes = user32.NewProc("SetLayeredWindowAttributes")
 	procIsZoomed                   = user32.NewProc("IsZoomed")
 	procGetSystemMetrics           = user32.NewProc("GetSystemMetrics")
+	procGetClassNameW              = user32.NewProc("GetClassNameW")
 	procRegDeleteTreeW             = advapi32.NewProc("RegDeleteTreeW")
 )
 
@@ -122,6 +131,8 @@ type windowInfo struct {
 	hwnd   uintptr
 	title  string
 	bounds bounds
+	// 窗口类名与标题后缀/精确匹配标记，用于 docPIP 判定
+	className string
 }
 
 func main() {
@@ -303,14 +314,15 @@ func setMousePassthrough(req request, enabled bool) response {
 	}
 }
 
-func titleMatchScore(winTitle string, titles []string) int {
-	// 只有精确匹配独占标记才算命中：包含/子串一律 0，
-	// 否则最大化游戏/浏览器这类标题相近的大窗会被误伤。
-	title := normalizeTitle(winTitle)
+func titleMatchScore(win windowInfo, titles []string) int {
+	// 只有精确匹配独占标记、或「以 ' - pip' 结尾的标题快照 + 类名护栏」才算命中，
+	// 防止大窗口靠标题相近偷分。
+	title := normalizeTitle(win.title)
 	for _, candidate := range titles {
 		if candidate == "" {
 			continue
 		}
+		// 精确匹配才给分：包含/子串一律 0，避免大窗口靠标题相近偷分。
 		if title == candidate {
 			return 300
 		}
@@ -318,9 +330,32 @@ func titleMatchScore(winTitle string, titles []string) int {
 	return 0
 }
 
-// 枚举到的窗口是否是 docPIP：必须精确等于独占 marker。
+// 枚举到的窗口是否是 docPIP：
+// 1. 标题精确等于 marker（老路径，marker 能传播时）；
+// 2. 或「标题以 ' - pip' 结尾 + Chromium 窗口类 + 非子窗口样式」
+//    ——Chrome 快照源页标题给 HWND，扩展在源页标题尾部追加 ' - PIP'，
+//    所以真 docPIP 的 HWND 标题必带该后缀；浏览器主窗口/游戏/其它应用不带。
 func isMarkerWindow(winTitle string) bool {
 	return normalizeTitle(winTitle) == markerTitle
+}
+
+func looksLikeDocPIP(win windowInfo) bool {
+	if isMarkerWindow(win.title) {
+		return true
+	}
+	if !strings.HasSuffix(normalizeTitle(win.title), docPIPtitleTail) {
+		return false
+	}
+	// Chromium 顶层窗口类。Chrome/Edge 的 docPIP 与主窗口同类名，
+	// 必须叠加「非最大化 + 面积护栏」排除主窗口（主窗口标题无 ' - PIP' 后缀，
+	// 但双保险：类名过滤掉 GLFW/Qt/Cabinet 等游戏与资源管理器误配）。
+	if win.className != "Chrome_WidgetWin_1" {
+		return false
+	}
+	if isMaximizedOrFullscreen(win.hwnd, win.bounds) {
+		return false
+	}
+	return true
 }
 
 func selectBestWindowByBounds(windows []windowInfo, req request) (windowInfo, bool) {
@@ -334,9 +369,9 @@ func selectBestWindowByBounds(windows []windowInfo, req request) (windowInfo, bo
 	bestDistance := math.MaxInt
 	var best windowInfo
 	for _, win := range windows {
-		// 只考虑标题精确匹配 marker 的窗口：游戏/浏览器/聊天窗口即使
+		// 只考虑 docPIP 形态的窗口：游戏/浏览器主窗口/聊天窗口即使
 		// bounds 重合也直接跳过，从根上杜绝误伤大窗口。
-		if titleMatchScore(win.title, titles) == 0 {
+		if titleMatchScore(win, titles) == 0 && !looksLikeDocPIP(win) {
 			continue
 		}
 		// 最大化/全屏窗口永远不是 docPIP：即使标题伪装也拒绝。
@@ -502,7 +537,7 @@ func findBestWindowAll(req request, useBounds bool) (windowInfo, bool, findDiagn
 		diag.enumerated = len(windows)
 		diag.titleMatches = 0
 		for _, win := range windows {
-			if isMarkerWindow(win.title) {
+			if looksLikeDocPIP(win) {
 				diag.titleMatches++
 			}
 		}
@@ -532,7 +567,7 @@ func selectBestWindow(windows []windowInfo, titles []string, target bounds) (win
 	var best windowInfo
 	found := false
 	for _, win := range windows {
-		if titleMatchScore(win.title, titles) == 0 {
+		if titleMatchScore(win, titles) == 0 && !looksLikeDocPIP(win) {
 			continue
 		}
 		if isMaximizedOrFullscreen(win.hwnd, win.bounds) {
@@ -586,9 +621,10 @@ func enumWindows() ([]windowInfo, error) {
 		}
 
 		windows = append(windows, windowInfo{
-			hwnd:   hwnd,
-			title:  title,
-			bounds: r,
+			hwnd:      hwnd,
+			title:     title,
+			bounds:    r,
+			className: getClassName(hwnd),
 		})
 		return 1
 	})
@@ -598,6 +634,15 @@ func enumWindows() ([]windowInfo, error) {
 		return nil, err
 	}
 	return windows, nil
+}
+
+func getClassName(hwnd uintptr) string {
+	buf := make([]uint16, 128)
+	ret, _, _ := procGetClassNameW.Call(hwnd, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+	if ret == 0 {
+		return ""
+	}
+	return syscall.UTF16ToString(buf)
 }
 
 func getWindowTitle(hwnd uintptr) string {
@@ -658,14 +703,18 @@ func windowBoundsDistance(a bounds, b bounds) int {
 }
 
 func normalizeTitles(req request) []string {
-	// 只保留独占 marker：老版本扩展曾把页面标题（如 "YouTube"）发过来，
-	// 而浏览器主窗口标题恰好是 "YouTube - Google Chrome"（归一化后完全相等），
-	// 不过滤就会精确命中浏览器大窗口。宁可找不到，也绝不误伤。
+	// 老版本扩展曾把页面标题（如 "YouTube"）发过来，而浏览器主窗口标题
+	// 恰好是 "YouTube - Google Chrome"（归一化后完全相等），不过滤就会
+	// 精确命中浏览器大窗口。只保留 marker 与标题后缀两种可匹配形态。
 	seen := map[string]bool{}
 	var titles []string
 	for _, title := range append([]string{req.Title}, req.Titles...) {
 		title = normalizeTitle(title)
-		if title == "" || title != markerTitle || seen[title] {
+		if title == "" || seen[title] {
+			continue
+		}
+		// 精确 marker 或以 ' - pip' 结尾的源页标题快照
+		if title != markerTitle && !strings.HasSuffix(title, docPIPtitleTail) {
 			continue
 		}
 		seen[title] = true
@@ -704,7 +753,8 @@ func isMaximizedOrFullscreen(hwnd uintptr, b bounds) bool {
 }
 
 func isReasonableAreaMatch(win windowInfo, target bounds) bool {
-	if !isMarkerWindow(win.title) {
+	// 面积护栏只放行 docPIP 形态的窗口：浏览器主窗口/游戏即使面积巧合也拒绝
+	if !looksLikeDocPIP(win) {
 		return false
 	}
 	if isMaximizedOrFullscreen(win.hwnd, win.bounds) {

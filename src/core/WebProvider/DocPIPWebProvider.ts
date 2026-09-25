@@ -28,9 +28,10 @@ export default class DocPIPWebProvider extends WebProvider {
 
   pipWindow?: Window
   private nativeWindowOpacityTargetTitle = ''
+  /**开窗瞬间源页标题（Chrome 把它快照给 docPIP 的 OS 窗口标题） */
+  private sourcePageTitleSnapshot = ''
   private nativeWindowOpacitySyncTimer:
-    | ReturnType<typeof setTimeout>
-    | undefined
+    ReturnType<typeof setTimeout> | undefined
   private nativeWindowOpacitySyncInFlight = false
   private nativeWindowOpacitySyncPending = false
   private nativeWindowOpacityPendingWindow?: Window
@@ -38,13 +39,16 @@ export default class DocPIPWebProvider extends WebProvider {
   private getNativeWindowOpacityTarget(
     pipWindow: Window,
   ): NativeWindowOpacityTarget {
-    // marker 为空（异常路径）时必须中断，不能回落发页面标题：
-    // 页面标题与浏览器主窗口标题相同，host 会精确命中浏览器大窗口。
-    const marker = this.nativeWindowOpacityTargetTitle || NATIVE_WINDOW_TITLE_MARKER
+    // 实测（Edge/Chrome 146+）：pipWindow.document.title 不会传播到 OS 原生窗口；
+    // Chrome 快照的是「开窗时刻源页 document.title」——onOpenPlayer 在源页标题
+    // 尾部追加 ' - PIP'，所以 docPIP 的 HWND 标题以 ' - PIP' 结尾。
+    // host 同时认 marker（老路径）与该后缀快照（+ 类名/最大化/面积护栏）。
+    const marker =
+      this.nativeWindowOpacityTargetTitle || NATIVE_WINDOW_TITLE_MARKER
+    const titles = [marker, this.sourcePageTitleSnapshot].filter(Boolean)
     return {
       title: marker,
-      // 只发 docPIP 独占标题标记：浏览器主窗口不匹配，避免误伤
-      titles: [marker].filter(Boolean),
+      titles,
       bounds: {
         left: pipWindow.screenLeft,
         top: pipWindow.screenTop,
@@ -148,9 +152,12 @@ export default class DocPIPWebProvider extends WebProvider {
       saveConfig()
     }
 
-    // 页面标题加 ' - PIP' 便于识别（仅视觉）；docPIP 窗口用独占标题标记让 native host 精确匹配
+    // 页面标题加 ' - PIP'：Chrome 会把「开窗时刻的源页标题」快照给 docPIP 的
+    // OS 窗口标题（实测 pipWindow.document.title 不传播），这个后缀就是 host
+    // 识别 docPIP 的依据之一；同时也便于人眼区分标签。
     const title = document.title
     document.title = title + ' - PIP'
+    this.sourcePageTitleSnapshot = document.title
     this.nativeWindowOpacityTargetTitle = NATIVE_WINDOW_TITLE_MARKER
 
     // 获取应该有的docPIP宽高
@@ -194,8 +201,9 @@ export default class DocPIPWebProvider extends WebProvider {
       height,
     })
     this.pipWindow = pipWindow
-    // 让 docPIP 窗口的 Windows 标题变成独占标记，native host 靠它精确匹配。
-    // 必须写死 marker：host 侧只认精确相等，任何页面标题回落都会误伤浏览器大窗口。
+    // pipWindow.document.title 在 Edge/Chrome 146+ 不会传播到 OS 原生窗口标题
+    //（Chrome 用开窗时刻源页标题快照），这里设置仅影响 PiP 内部文档；
+    // host 侧 marker 精确匹配作为兼容老版本的前缀路径保留。
     pipWindow.document.title = NATIVE_WINDOW_TITLE_MARKER
     this.nativeWindowOpacityTargetTitle = NATIVE_WINDOW_TITLE_MARKER
     await this.syncNativeWindowOpacity(pipWindow)
@@ -301,10 +309,10 @@ export default class DocPIPWebProvider extends WebProvider {
 
       // 以 pip 所在屏幕的中心为锚点判定，避免多屏/副屏上锚点算错导致窗口“跳”
       const pipScreen = pipWindow.screen ?? screen
-      const screenLeft = (pipScreen as Screen & { availLeft?: number })
-        .availLeft ?? 0
-      const screenTop = (pipScreen as Screen & { availTop?: number })
-        .availTop ?? 0
+      const screenLeft =
+        (pipScreen as Screen & { availLeft?: number }).availLeft ?? 0
+      const screenTop =
+        (pipScreen as Screen & { availTop?: number }).availTop ?? 0
       const pipCenterX = left + width / 2
       const pipCenterY = top + height / 2
       const x =

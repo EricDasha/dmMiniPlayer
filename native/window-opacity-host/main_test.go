@@ -100,17 +100,18 @@ func TestFindBestWindowByBoundsIgnoresUnmatchedGameWindow(t *testing.T) {
 	}
 
 	// 标题筛选：nickke 不匹配 marker，findBestWindowByBounds 直接跳过它
-	if titleMatchScore("NIKKE: Goddess of Victory", normalizeTitles(req)) != 0 {
+	if titleMatchScore(windowInfo{title: "NIKKE: Goddess of Victory"}, normalizeTitles(req)) != 0 {
 		t.Fatalf("nickke 标题不应匹配 marker")
 	}
-	if titleMatchScore("dmMiniPlayer-PIP", normalizeTitles(req)) != 300 {
+	if titleMatchScore(windowInfo{title: "dmMiniPlayer-PIP"}, normalizeTitles(req)) != 300 {
 		t.Fatalf("marker pip 标题应精确匹配")
 	}
 }
 
 // 老版本扩展曾把页面标题发给 host（如 Title="YouTube"），此时浏览器主窗口
 // （"YouTube - Google Chrome" 归一化后恰好也是 "youtube"）会被精确命中。
-// normalizeTitles 必须丢弃一切非 marker，保证宁可找不到也绝不误伤浏览器。
+// normalizeTitles 必须丢弃一切非 marker/非 ' - PIP' 后缀标题，
+// 保证宁可找不到也绝不误伤浏览器。
 func TestNormalizeTitlesDropsPageTitle(t *testing.T) {
 	req := request{
 		Title:  "YouTube",
@@ -119,9 +120,10 @@ func TestNormalizeTitlesDropsPageTitle(t *testing.T) {
 	}
 	windows := []windowInfo{
 		{
-			hwnd:   1,
-			title:  "YouTube - Google Chrome",
-			bounds: bounds{Left: 0, Top: 0, Width: 640, Height: 360},
+			hwnd:      1,
+			title:     "YouTube - Google Chrome",
+			className: "Chrome_WidgetWin_1",
+			bounds:    bounds{Left: 0, Top: 0, Width: 640, Height: 360},
 		},
 	}
 	if got := normalizeTitles(req); len(got) != 0 {
@@ -129,6 +131,60 @@ func TestNormalizeTitlesDropsPageTitle(t *testing.T) {
 	}
 	if _, ok := selectBestWindow(windows, normalizeTitles(req), req.Bounds); ok {
 		t.Fatalf("页面标题请求必须找不到窗口，不能误伤浏览器主窗口")
+	}
+}
+
+// 源页标题快照匹配：扩展在源页标题尾部追加 ' - PIP'，Chrome 把它快照给 docPIP 的
+// HWND 标题。normalizeTitles 必须放行该形态，且 looksLikeDocPIP 认得它。
+func TestDocPIPTitleSnapshotMatching(t *testing.T) {
+	req := request{
+		Title:  "some video - YouTube - PIP",
+		Titles: []string{"some video - YouTube - PIP"},
+		Bounds: bounds{Left: 1271, Top: 40, Width: 619, Height: 380},
+	}
+	got := normalizeTitles(req)
+	if len(got) != 1 {
+		t.Fatalf("' - PIP' 后缀标题必须放行，得到 %q", got)
+	}
+
+	pip := windowInfo{
+		hwnd:      0x70c88,
+		title:     "some video - YouTube - PIP",
+		className: "Chrome_WidgetWin_1",
+		bounds:    bounds{Left: 1271, Top: 40, Width: 619, Height: 380},
+	}
+	if !looksLikeDocPIP(pip) {
+		t.Fatalf("类名 Chrome_WidgetWin_1 + ' - PIP' 后缀应识别为 docPIP")
+	}
+	if _, ok := selectBestWindowByBounds([]windowInfo{pip}, req); !ok {
+		t.Fatalf("标题快照形态的 docPIP 必须能被 bounds 匹配命中")
+	}
+}
+
+// ' - PIP' 后缀 + 类名护栏：非 Chromium 窗口类（游戏 GLFW/Qt 等）
+// 即使标题带后缀也不能被认成 docPIP。
+func TestLooksLikeDocPIPRejectsNonChromiumClass(t *testing.T) {
+	fake := windowInfo{
+		hwnd:      2,
+		title:     "fake - PIP",
+		className: "GLFW30",
+		bounds:    bounds{Left: 100, Top: 100, Width: 640, Height: 360},
+	}
+	if looksLikeDocPIP(fake) {
+		t.Fatalf("非 Chromium 类名的窗口不能被识别为 docPIP")
+	}
+}
+
+// 浏览器主窗口（无 ' - PIP' 后缀）永远不被识别为 docPIP。
+func TestLooksLikeDocPIPRejectsMainWindow(t *testing.T) {
+	main := windowInfo{
+		hwnd:      3,
+		title:     "OpenCode 和另外 3 个页面 - 个人 - Microsoft Edge",
+		className: "Chrome_WidgetWin_1",
+		bounds:    bounds{Left: -8, Top: -8, Width: 1936, Height: 1056},
+	}
+	if looksLikeDocPIP(main) {
+		t.Fatalf("浏览器主窗口不能被识别为 docPIP")
 	}
 }
 
@@ -169,13 +225,13 @@ func TestScoreWindowRejectsSubstringTitle(t *testing.T) {
 	}
 }
 
-// 非 marker 窗口永远通不过面积护栏，即使面积完全一致。
+// 非 docPIP 形态窗口永远通不过面积护栏，即使面积完全一致。
 func TestAreaMatchRequiresMarker(t *testing.T) {
 	win := windowInfo{
 		title:  "YouTube - Google Chrome",
 		bounds: bounds{Left: 100, Top: 100, Width: 640, Height: 360},
 	}
 	if isReasonableAreaMatch(win, bounds{Left: 100, Top: 100, Width: 640, Height: 360}) {
-		t.Fatalf("非 marker 窗口必须被面积护栏拒绝")
+		t.Fatalf("非 docPIP 窗口必须被面积护栏拒绝")
 	}
 }
