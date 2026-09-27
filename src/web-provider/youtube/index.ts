@@ -15,6 +15,8 @@ const isLive = () =>
     ? !!getIframe()
     : !!getLiveClass()
 export default class YoutubeProvider extends HtmlDanmakuProvider {
+  /** 上次抓过字幕的 watchId（?v=）：SPA 切视频常复用同一个 <video> 元素 */
+  private lastSubtitleVideoId: string | null | undefined
   override onInit() {
     super.onInit()
     this.isLive = isLive()
@@ -28,12 +30,13 @@ export default class YoutubeProvider extends HtmlDanmakuProvider {
 
   override async onPlayerInitd() {
     this.initSideSwitcherData()
-    let lastPath = location.pathname
+    let lastHref = location.href
     const routeUnlisten = onRouteChange(() => {
-      // pushState 不一定换视频（&t= 时间戳等只改参数）：路径没变就不重跑字幕抓取，
-      // 否则设置菜单会被反复开合打断用户操作
-      if (location.pathname === lastPath) return
-      lastPath = location.pathname
+      // 路由变化不一定换视频：pathname 和 ?v= 都没变（如 &t= 时间戳参数）
+      // 就不重跑字幕抓取，否则设置菜单会被反复开合打断用户操作。
+      // 注意：SPA 切视频常复用同一个 <video> 元素，update() 里用 watchId 区分。
+      if (location.href === lastHref) return
+      lastHref = location.href
       setTimeout(() => {
         this.update()
         this.initSideSwitcherData()
@@ -60,6 +63,17 @@ export default class YoutubeProvider extends HtmlDanmakuProvider {
   }
 
   update() {
+    // 同一 <video> 元素在切视频时会被复用：不能只看 initd，必须区分视频。
+    // watchId 变了（?v= 参数）或 video 元素换了 → 重抓；否则 sidebar 之类
+    // 的抖动进来也是 no-op。
+    const id = new URLSearchParams(location.search).get('v')
+    const sameVideo =
+      this.subtitleManager.initd &&
+      this.subtitleManager.video === this.webVideo &&
+      this.lastSubtitleVideoId !== undefined &&
+      this.lastSubtitleVideoId === id
+    if (sameVideo) return
+    this.lastSubtitleVideoId = id
     this.subtitleManager.init(this.webVideo)
     if (this.videoPreviewManager) {
       this.videoPreviewManager.init(this.webVideo)
