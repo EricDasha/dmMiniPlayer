@@ -17,6 +17,8 @@ const isLive = () =>
 export default class YoutubeProvider extends HtmlDanmakuProvider {
   /** 上次抓过字幕的 watchId（?v=）：SPA 切视频常复用同一个 <video> 元素 */
   private lastSubtitleVideoId: string | null | undefined
+  private subtitleUpdateRetryTimer?: ReturnType<typeof setTimeout>
+  private subtitleUpdateRetries = 0
   override onInit() {
     super.onInit()
     this.isLive = isLive()
@@ -43,6 +45,9 @@ export default class YoutubeProvider extends HtmlDanmakuProvider {
       }, 0)
     })
     this.addOnUnloadFn(routeUnlisten)
+    this.addOnUnloadFn(() => {
+      clearTimeout(this.subtitleUpdateRetryTimer)
+    })
 
     const listDom = dq1('ytd-watch-next-secondary-results-renderer')
     if (listDom) {
@@ -66,13 +71,26 @@ export default class YoutubeProvider extends HtmlDanmakuProvider {
     // 同一 <video> 元素在切视频时会被复用：不能只看 initd，必须区分视频。
     // watchId 变了（?v= 参数）或 video 元素换了 → 重抓；否则 sidebar 之类
     // 的抖动进来也是 no-op。
+    // subtitleItems 为空说明上次抓取没产出（链条中断/菜单没点开）：即使 watchId
+    // 没变也要重抓，否则切视频一次失败就永久无字幕，只能重启扩展恢复。
     const id = new URLSearchParams(location.search).get('v')
     const sameVideo =
       this.subtitleManager.initd &&
       this.subtitleManager.video === this.webVideo &&
       this.lastSubtitleVideoId !== undefined &&
-      this.lastSubtitleVideoId === id
+      this.lastSubtitleVideoId === id &&
+      this.subtitleManager.subtitleItems.length > 0
     if (sameVideo) return
+    // 上一轮抓取链还在跑：此时 init() 会被静默丢弃。绝不能先消费
+    // lastSubtitleVideoId（否则丢弃后守卫永久放行失败），稍后重试。
+    if (this.subtitleManager.initing) {
+      if (this.subtitleUpdateRetries++ < 5) {
+        clearTimeout(this.subtitleUpdateRetryTimer)
+        this.subtitleUpdateRetryTimer = setTimeout(() => this.update(), 1200)
+      }
+      return
+    }
+    this.subtitleUpdateRetries = 0
     this.lastSubtitleVideoId = id
     this.subtitleManager.init(this.webVideo)
     if (this.videoPreviewManager) {

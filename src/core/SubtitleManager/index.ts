@@ -67,7 +67,8 @@ class SubtitleManager extends Events2<SubtitleManagerEvents> {
     )
   }
 
-  protected initing = false
+  /**抓取链进行中：此时调 init() 会被直接丢弃，调用方需自行决定重试 */
+  initing = false
   async init(video: HTMLVideoElement) {
     if (this.initing) return
     // console.trace('init subtitleManager')

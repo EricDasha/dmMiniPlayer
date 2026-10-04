@@ -7,7 +7,8 @@ import configStore, {
 } from '@root/store/config'
 import type { NativeWindowOpacityTarget } from '@root/shared/nativeWindowOpacity'
 import { NATIVE_WINDOW_TITLE_MARKER } from '@root/shared/nativeWindowOpacity'
-import { calculateNewDimensions, createElement } from '@root/utils'
+import { calculateNewDimensions, createElement, dq1 } from '@root/utils'
+import onRouteChange from '@root/inject/csUtils/onRouteChange'
 import { getDocPIPBorderSize } from '@root/utils/docPIP'
 import {
   getBrowserSyncStorage,
@@ -35,6 +36,49 @@ export default class DocPIPWebProvider extends WebProvider {
   private nativeWindowOpacitySyncInFlight = false
   private nativeWindowOpacitySyncPending = false
   private nativeWindowOpacityPendingWindow?: Window
+
+  /** YouTube 自家 miniplayer 的播放器 API */
+  private getYoutubePlayer() {
+    return dq1<
+      HTMLElement & {
+        setMinimized?: (minimized: boolean) => void
+        unloadModule?: (moduleName: string) => void
+        loadModule?: (moduleName: string) => void
+      }
+    >('.html5-video-player')
+  }
+
+  private youtubeMiniplayerDisabled = false
+  /**
+   * YouTube 把 <video> 搬出播放器（docPIP replaceVideoEl）后会激活自家 miniplayer：
+   * ytp-miniplayer-scrim 盖住原播放器，后续设置菜单点不开 → 字幕抓取链断裂。
+   * docPIP 存续期间持续压制；每次现查播放器元素（SPA 切视频可能重建播放器）。
+   * 非 YouTube 页面没有该元素，直接 no-op。
+   */
+  private disableYoutubeMiniplayer() {
+    try {
+      const ytPlayer = this.getYoutubePlayer()
+      if (typeof ytPlayer?.unloadModule === 'function') {
+        ytPlayer.unloadModule('miniplayer')
+        this.youtubeMiniplayerDisabled = true
+      }
+      ytPlayer?.setMinimized?.(false)
+    } catch {
+      // 播放器 API 不可用时静默跳过，不影响正常开窗
+    }
+  }
+
+  private restoreYoutubeMiniplayer() {
+    if (!this.youtubeMiniplayerDisabled) return
+    this.youtubeMiniplayerDisabled = false
+    try {
+      const ytPlayer = this.getYoutubePlayer()
+      ytPlayer?.setMinimized?.(false)
+      ytPlayer?.loadModule?.('miniplayer')
+    } catch {
+      // 还原失败也不影响关窗；下次 SPA 重建播放器时模块自然回归
+    }
+  }
 
   private getNativeWindowOpacityTarget(
     pipWindow: Window,
@@ -188,19 +232,36 @@ export default class DocPIPWebProvider extends WebProvider {
       WebextEvent.probeNativeWindowOpacity,
       { force: true },
     ).catch(() => false)
-    await this.miniPlayer.init()
+    this.disableYoutubeMiniplayer()
+    try {
+      await this.miniPlayer.init()
+    } catch (error) {
+      this.restoreYoutubeMiniplayer()
+      throw error
+    }
     const playerEl = this.miniPlayer.playerRootEl
     if (!playerEl) {
+      this.restoreYoutubeMiniplayer()
       console.error('不正常的miniPlayer.init()，没有 playerEl', this.miniPlayer)
       throw Error('不正常的miniPlayer.init()')
     }
 
     console.log('[docPIP_WH] real width height', { width, height })
-    const pipWindow = await window.documentPictureInPicture.requestWindow({
-      width,
-      height,
-    })
+    let pipWindow: Window
+    try {
+      pipWindow = await window.documentPictureInPicture.requestWindow({
+        width,
+        height,
+      })
+    } catch (error) {
+      this.restoreYoutubeMiniplayer()
+      throw error
+    }
     this.pipWindow = pipWindow
+    this.disableYoutubeMiniplayer()
+    // SPA 切视频会重建播放器、miniplayer 模块可能回归：窗开着就持续压制；
+    // 注册点放在开窗成功之后，之前失败抛错不留监听
+    this.addOnUnloadFn(onRouteChange(() => this.disableYoutubeMiniplayer()))
     // pipWindow.document.title 在 Edge/Chrome 146+ 不会传播到 OS 原生窗口标题
     //（Chrome 用开窗时刻源页标题快照），这里设置仅影响 PiP 内部文档；
     // host 侧 marker 精确匹配作为兼容老版本的前缀路径保留。
@@ -400,6 +461,7 @@ export default class DocPIPWebProvider extends WebProvider {
       pipWindow.removeEventListener('focus', restoreWindowInteractionOnFocus)
       pipWindowControls.dispose()
       sendMessage(WebextEvent.closePIP, null)
+      this.restoreYoutubeMiniplayer()
 
       // 恢复原始标题
       document.title = title
@@ -431,6 +493,7 @@ export default class DocPIPWebProvider extends WebProvider {
     })
 
     pipWindow.document.body.appendChild(playerEl)
+    this.disableYoutubeMiniplayer()
     if (!window.__dmmpNativeWindowOpacityAvailable) {
       showNativeHostMissingNotice(pipWindow)
     }
