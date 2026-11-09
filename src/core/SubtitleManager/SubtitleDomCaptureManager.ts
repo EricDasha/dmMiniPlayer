@@ -145,15 +145,23 @@ export default abstract class SubtitleDomCaptureManager extends SubtitleManager 
     // 必须带真实坐标重建事件：裸 click 的坐标恒为 (0,0)，会被坐标型处理器
     // 误判成“点在页头左上角”，进而导航回首页
     const template = node.event
+    let dispatched = false
     if (template instanceof MouseEvent) {
-      dispatchMouse(tar, template.type, {
+      dispatched = dispatchMouse(tar, template.type, {
         bubbles: template.bubbles,
         cancelable: template.cancelable,
         composed: template.composed,
         detail: template.detail,
       })
     } else {
+      // dispatchEvent 的返回值是 !defaultPrevented，不能当作“是否派发”
       tar.dispatchEvent(template)
+      dispatched = true
+    }
+    if (!dispatched) {
+      // 目标没有布局盒：不再用视口中心伪造落点，否则会误触播放器
+      console.log('skip hidden target (no layout box)', tar)
+      return false
     }
     await wait(node.wait ?? 50)
     return true
@@ -161,7 +169,9 @@ export default abstract class SubtitleDomCaptureManager extends SubtitleManager 
 
   /**页头 / logo / 指向站点根路径的链接：任何合成点击都不该碰 */
   private isUnsafeNavTarget(el: Element): boolean {
-    if (el.closest('ytd-masthead, #masthead-container, ytd-topbar-logo-renderer'))
+    if (
+      el.closest('ytd-masthead, #masthead-container, ytd-topbar-logo-renderer')
+    )
       return true
     const anchor = el.closest('a[href]')
     if (!anchor) return false
@@ -178,6 +188,7 @@ export default abstract class SubtitleDomCaptureManager extends SubtitleManager 
       el?.isConnected &&
       el.closest('.ytp-panel-menu') &&
       el.textContent === label &&
+      el.getClientRects().length > 0 &&
       !this.isUnsafeNavTarget(el)
     )
   }
@@ -211,7 +222,10 @@ export default abstract class SubtitleDomCaptureManager extends SubtitleManager 
         console.log(`subtitle item not found on retry: ${label}`)
         return
       }
-      dispatchMouse(target, 'click')
+      if (!dispatchMouse(target, 'click')) {
+        console.log(`subtitle item has no layout box on retry: ${label}`)
+        return
+      }
       this.#labelToClickChildElMap.set(label, target as HTMLElement)
     } finally {
       for (const node of closeNodes) await this.performEvent(node)
@@ -287,10 +301,12 @@ export default abstract class SubtitleDomCaptureManager extends SubtitleManager 
     this.activeSubtitleLabel = subtitleItemsLabel
 
     const el = this.#labelToClickChildElMap.get(subtitleItemsLabel)
-    if (this.isClickableSubtitleItem(el, subtitleItemsLabel)) {
+    if (
+      this.isClickableSubtitleItem(el, subtitleItemsLabel) &&
+      dispatchMouse(el, 'click')
+    ) {
       // 绝不用 el.click()：它派发的事件坐标恒为 (0,0)，会被站点的坐标型
       // 处理器当成“点在页头左上角”——表现为点 CC 却跳回首页 + 起自带小窗
-      dispatchMouse(el, 'click')
     } else {
       // 站点关菜单时会重建面板，旧节点失效。重开菜单按文本再点，
       // 否则第一次点 CC 空转，只能靠“重进影片”才恢复

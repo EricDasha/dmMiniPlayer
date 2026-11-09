@@ -72,6 +72,12 @@ vite.client.dev.js
 # local agent/ai scratch dirs
 .codex-tmp/
 .agents/
+.playwright-mcp/
+
+# playwright run artifacts
+/test-results/
+/test-results-*/
+playwright-report/
 
 # local packaged artifacts
 dmMiniPlayer-local-build/

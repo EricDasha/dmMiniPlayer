@@ -167,17 +167,22 @@ export const dq1Adv: typeof dq1 = (
  * 带真实坐标的合成鼠标事件：裸 `new MouseEvent('click')` / `el.click()` 默认坐标是
  * (0, 0)——视口左上角正是 masthead / ytd-logo 区域，任何按坐标做 elementFromPoint
  * 的处理器都会误命中 logo 造成跳回主页。统一按目标中心补坐标。
+ *
+ * 目标没有布局盒（display:none / 尚未挂载）时直接放弃派发并返回 false：
+ * 旧逻辑会回退到视口中心，而视口中心往往正好落在播放器中下部，会被站点按坐标
+ * 判定为一次真实点击（YouTube 会因此唤起自家 miniplayer）。隐藏元素本来也点不到，
+ * 不再伪造落点。
  */
 export function dispatchMouse(
   el: Element,
   type: string = 'click',
   init?: MouseEventInit,
-): void {
+): boolean {
   const view = el.ownerDocument.defaultView ?? window
   const rect = el.getBoundingClientRect()
-  const rawX = rect.width > 0 ? rect.left + rect.width / 2 : view.innerWidth / 2
-  const rawY =
-    rect.height > 0 ? rect.top + rect.height / 2 : view.innerHeight / 2
+  if (rect.width <= 0 || rect.height <= 0) return false
+  const rawX = rect.left + rect.width / 2
+  const rawY = rect.top + rect.height / 2
   const maxX = Math.max(view.innerWidth - 1, 0)
   const maxY = Math.max(view.innerHeight - 1, 0)
   const clientX = Math.min(Math.max(rawX, 0), maxX)
@@ -195,11 +200,12 @@ export function dispatchMouse(
       ...init,
     }),
   )
+  return true
 }
 
 /**dispatchMouse 的 click 快捷版 */
-export function dispatchClick(el: Element): void {
-  dispatchMouse(el, 'click')
+export function dispatchClick(el: Element): boolean {
+  return dispatchMouse(el, 'click')
 }
 
 export const onWindowLoad = () => {

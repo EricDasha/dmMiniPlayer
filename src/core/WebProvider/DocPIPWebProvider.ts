@@ -7,9 +7,14 @@ import configStore, {
 } from '@root/store/config'
 import type { NativeWindowOpacityTarget } from '@root/shared/nativeWindowOpacity'
 import { NATIVE_WINDOW_TITLE_MARKER } from '@root/shared/nativeWindowOpacity'
-import { calculateNewDimensions, createElement, dq1 } from '@root/utils'
+import { calculateNewDimensions, createElement } from '@root/utils'
 import onRouteChange from '@root/inject/csUtils/onRouteChange'
 import { getDocPIPBorderSize } from '@root/utils/docPIP'
+import {
+  restoreYoutubeMiniplayer as restoreYoutubeMiniplayerModule,
+  startYoutubeMiniplayerGuard,
+  suppressYoutubeMiniplayer,
+} from '@root/utils/youtubeMiniplayer'
 import {
   getBrowserSyncStorage,
   setBrowserSyncStorage,
@@ -37,18 +42,8 @@ export default class DocPIPWebProvider extends WebProvider {
   private nativeWindowOpacitySyncPending = false
   private nativeWindowOpacityPendingWindow?: Window
 
-  /** YouTube 自家 miniplayer 的播放器 API */
-  private getYoutubePlayer() {
-    return dq1<
-      HTMLElement & {
-        setMinimized?: (minimized: boolean) => void
-        unloadModule?: (moduleName: string) => void
-        loadModule?: (moduleName: string) => void
-      }
-    >('.html5-video-player')
-  }
-
   private youtubeMiniplayerDisabled = false
+  private stopYoutubeMiniplayerGuard?: () => void
   /**
    * YouTube 把 <video> 搬出播放器（docPIP replaceVideoEl）后会激活自家 miniplayer：
    * ytp-miniplayer-scrim 盖住原播放器，后续设置菜单点不开 → 字幕抓取链断裂。
@@ -56,28 +51,25 @@ export default class DocPIPWebProvider extends WebProvider {
    * 非 YouTube 页面没有该元素，直接 no-op。
    */
   private disableYoutubeMiniplayer() {
-    try {
-      const ytPlayer = this.getYoutubePlayer()
-      if (typeof ytPlayer?.unloadModule === 'function') {
-        ytPlayer.unloadModule('miniplayer')
-        this.youtubeMiniplayerDisabled = true
-      }
-      ytPlayer?.setMinimized?.(false)
-    } catch {
-      // 播放器 API 不可用时静默跳过，不影响正常开窗
-    }
+    if (suppressYoutubeMiniplayer()) this.youtubeMiniplayerDisabled = true
+  }
+
+  /** SPA 切视频会重建播放器，observer 的根节点也要跟着换 */
+  private restartYoutubeMiniplayerGuard() {
+    this.stopYoutubeMiniplayerGuard?.()
+    this.stopYoutubeMiniplayerGuard = startYoutubeMiniplayerGuard()
+  }
+
+  private stopMiniplayerGuard() {
+    this.stopYoutubeMiniplayerGuard?.()
+    this.stopYoutubeMiniplayerGuard = undefined
   }
 
   private restoreYoutubeMiniplayer() {
+    this.stopMiniplayerGuard()
     if (!this.youtubeMiniplayerDisabled) return
     this.youtubeMiniplayerDisabled = false
-    try {
-      const ytPlayer = this.getYoutubePlayer()
-      ytPlayer?.setMinimized?.(false)
-      ytPlayer?.loadModule?.('miniplayer')
-    } catch {
-      // 还原失败也不影响关窗；下次 SPA 重建播放器时模块自然回归
-    }
+    restoreYoutubeMiniplayerModule()
   }
 
   private getNativeWindowOpacityTarget(
@@ -261,7 +253,13 @@ export default class DocPIPWebProvider extends WebProvider {
     this.disableYoutubeMiniplayer()
     // SPA 切视频会重建播放器、miniplayer 模块可能回归：窗开着就持续压制；
     // 注册点放在开窗成功之后，之前失败抛错不留监听
-    this.addOnUnloadFn(onRouteChange(() => this.disableYoutubeMiniplayer()))
+    this.addOnUnloadFn(
+      onRouteChange(() => {
+        this.disableYoutubeMiniplayer()
+        this.restartYoutubeMiniplayerGuard()
+      }),
+    )
+    this.addOnUnloadFn(() => this.stopMiniplayerGuard())
     // pipWindow.document.title 在 Edge/Chrome 146+ 不会传播到 OS 原生窗口标题
     //（Chrome 用开窗时刻源页标题快照），这里设置仅影响 PiP 内部文档；
     // host 侧 marker 精确匹配作为兼容老版本的前缀路径保留。
@@ -494,6 +492,7 @@ export default class DocPIPWebProvider extends WebProvider {
 
     pipWindow.document.body.appendChild(playerEl)
     this.disableYoutubeMiniplayer()
+    this.restartYoutubeMiniplayerGuard()
     if (!window.__dmmpNativeWindowOpacityAvailable) {
       showNativeHostMissingNotice(pipWindow)
     }

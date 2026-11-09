@@ -1,5 +1,6 @@
 import SubtitleDomCaptureManager from '@root/core/SubtitleManager/SubtitleDomCaptureManager'
 import { dq1, tryCatch } from '@root/utils'
+import { suppressYoutubeMiniplayer } from '@root/utils/youtubeMiniplayer'
 import { ExtractPromise } from '@root/utils/typeUtils'
 import { getVideoInfo } from './utils'
 
@@ -36,6 +37,39 @@ function findSettingsButtonToClose(): Element | null | undefined {
 }
 
 export default class YoutubeSubtitleManager extends SubtitleDomCaptureManager {
+  /**
+   * 只有 docPIP 把 <video> 搬出播放器时才压制 YouTube miniplayer。
+   * 普通 watch 页的 miniplayer 是用户自己的功能，不能因为抓字幕顺手卸掉。
+   */
+  private suppressMiniplayerIfDetached() {
+    const pipOpen = !!window.documentPictureInPicture?.window
+    const videoDetached =
+      !!this.video && !this.video.closest('.html5-video-player')
+    if (!pipOpen && !videoDetached) return
+    suppressYoutubeMiniplayer()
+  }
+
+  override async onInit() {
+    // 抓字幕要连续点播放器菜单；docPIP 下 video 已被搬走，YouTube 随时会
+    // 重新挂回自家 miniplayer。链条前后各压一次，避免合成交互把它唤醒。
+    this.suppressMiniplayerIfDetached()
+    try {
+      await super.onInit()
+    } finally {
+      this.suppressMiniplayerIfDetached()
+    }
+  }
+
+  override async autoloadSubtitle() {
+    // 选中字幕后会再点一次菜单项让 YouTube 渲染字幕，同样可能唤醒 miniplayer
+    this.suppressMiniplayerIfDetached()
+    try {
+      await super.autoloadSubtitle()
+    } finally {
+      this.suppressMiniplayerIfDetached()
+    }
+  }
+
   override async getConfig(): ExtractPromise<
     ReturnType<SubtitleDomCaptureManager['getConfig']>
   > {
