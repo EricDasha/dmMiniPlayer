@@ -14,6 +14,7 @@ import { DocPIPRenderType } from '@root/types/config'
 import {
   createElement,
   dq,
+  dq1,
   dq1Adv,
   getIframeElFromSource,
   tryCatch,
@@ -50,35 +51,41 @@ if (isTop) {
       }),
     )
   })
-}
-// all frames and top
-// Set crossOrigin on all video elements to enable captureStream()
-function setCrossOriginOnVideo(video: HTMLVideoElement) {
-  if (video.src.startsWith('blob:')) return
-  if (video.crossOrigin) return
-  video.crossOrigin = 'anonymous'
-}
-dq('*').forEach((node) => {
-  if (!node.shadowRoot) return
-  dq('video', node.shadowRoot).forEach((v) => {
-    setCrossOriginOnVideo(v)
-  })
-})
-new MutationObserver((mutations) => {
-  mutations.forEach((mutation) => {
-    mutation.addedNodes.forEach((node) => {
-      if (node.nodeType !== Node.ELEMENT_NODE) return
-      if ((node as HTMLElement).tagName === 'VIDEO') {
-        setCrossOriginOnVideo(node as HTMLVideoElement)
-        return
-      }
-      const video = dq('video', node as HTMLElement)
-      video.forEach((v) => {
+
+  let videoObserver: MutationObserver
+  function setCrossOriginOnVideo(video: HTMLVideoElement) {
+    if (video.src.startsWith('blob:')) return
+    if (video.crossOrigin) return
+    video.crossOrigin = 'anonymous'
+  }
+
+  autorun(() => {
+    videoObserver?.disconnect?.()
+    videoObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType !== Node.ELEMENT_NODE) return
+          if ((node as HTMLElement).tagName === 'VIDEO') {
+            setCrossOriginOnVideo(node as HTMLVideoElement)
+          }
+        })
+      })
+    })
+    if (!configStore.setCrossOriginOnAllIframeVideo) return
+    // only all frames
+    // Set crossOrigin on all video elements to enable captureStream()
+    dq('video').forEach((v) => {
+      setCrossOriginOnVideo(v)
+    })
+    dq('*').forEach((node) => {
+      if (!node.shadowRoot) return
+      dq('video', node.shadowRoot).forEach((v) => {
         setCrossOriginOnVideo(v)
       })
     })
+    videoObserver.observe(document.body, { childList: true, subtree: true })
   })
-}).observe(document.body, { childList: true, subtree: true })
+}
 
 function main() {
   let provider: WebProvider | undefined
@@ -117,8 +124,16 @@ function main() {
   }
 
   const requestVideoPIP = async () => {
-    let hasVideo = !!dq1Adv('video')
+    let hasVideo = !!dq1('video')
     let isIframeMode = false
+
+    if (!hasVideo) {
+      hasVideo = !!dq1Adv('video')
+      if (hasVideo) {
+        playerConfig.forceDocPIPRenderType =
+          configStore.sameOriginIframeCaptureModePriority
+      }
+    }
 
     // 没找到再启用非同源iframe查找
     if (!hasVideo) {

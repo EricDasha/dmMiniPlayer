@@ -1,3 +1,18 @@
+## v0.6.64
+1. Fixed an issue where clicking the extension button failed to start picture-in-picture when the video was inside an iframe
+2. Fixed an issue where some videos failed to load
+3. Reverted the #183 fix; floating button position settings now work correctly
+4. Added Russian translation
+
+## v0.6.63
+1. Upgraded underlying dependencies
+2. Fixed player menu disappearing and related issues after Chrome 153
+3. Fixed an issue where danmaku could not be loaded from a URL in replacement mode
+4. Fixed a mismatch between Bilibili thumbnails and the progress bar
+5. Fixed possible errors when fetching danmaku for Bilibili videos @tan5166 @YunzeZheng
+6. Adjusted the danmaku input DOM settings for Bilibili live
+7. Improved keybinding in the settings panel @MaksVolkov7863
+
 ## v0.6.62
 1. Fixed an error when loading custom danmaku
 2. Improved the extension global shortcut hide/show behavior so the picture-in-picture window can be fully hidden
