@@ -27,18 +27,27 @@ const SubtitleSelectionInner: FC<Props> = observer((props) => {
   const { eventBus, videoPlayerRef } = useContext(vpContext)
 
   const handleChangeVisible = useMemoizedFn(() => {
-    runInAction(() => {
-      if (!subtitleManager.activeSubtitleLabel) {
-        if (subtitleManager.subtitleItems.length) {
-          subtitleManager.useSubtitle(subtitleManager.subtitleItems[0].label)
-          subtitleManager.showSubtitle = true
-        } else {
-          return console.log('No subtitle')
-        }
-      } else {
-        subtitleManager.showSubtitle = !subtitleManager.showSubtitle
+    if (!subtitleManager.activeSubtitleLabel) {
+      if (!subtitleManager.subtitleItems.length) {
+        // 抓取链可能还没跑完，或已失败：点一次就补抓，
+        // 避免“必须重进影片再来点一次”才拿到字幕
+        void subtitleManager.reinit().then((ok) => {
+          if (!ok) return console.log('No subtitle')
+          if (!subtitleManager.subtitleItems.length) return
+          runInAction(() => {
+            subtitleManager.useSubtitle(subtitleManager.subtitleItems[0].label)
+            subtitleManager.showSubtitle = true
+          })
+        })
+        return
       }
-    })
+      runInAction(() => {
+        subtitleManager.useSubtitle(subtitleManager.subtitleItems[0].label)
+        subtitleManager.showSubtitle = true
+      })
+    } else {
+      subtitleManager.showSubtitle = !subtitleManager.showSubtitle
+    }
   })
 
   useOnce(() =>

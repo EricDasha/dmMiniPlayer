@@ -18,11 +18,13 @@ export const test = base.extend<{
   context: BrowserContext
   extensionId: string
 }>({
-  context: async ({ headless, browser }, use) => {
+  context: async ({ headless }, use) => {
     // workaround for the Vite server has started but contentScript is not yet.
     await sleep(1000)
     const context = await chromium.launchPersistentContext('', {
       headless: false,
+      channel: process.env.DMMP_E2E_CHANNEL as any,
+      executablePath: process.env.DMMP_E2E_EXE || undefined,
       args: [
         // ...(headless ? ['--headless=new'] : []),
         `--disable-extensions-except=${extensionPath}`,

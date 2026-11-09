@@ -84,6 +84,12 @@ class SubtitleManager extends Events2<SubtitleManagerEvents> {
     this.initd = true
   }
   onInit() {}
+  /**抓取链未跑完/失败后的补抓：复用当前 video，返回是否拿到了字幕列表 */
+  async reinit(): Promise<boolean> {
+    if (this.initing || !this.video) return false
+    await this.init(this.video)
+    return this.subtitleItems.length > 0
+  }
   unload() {
     this.reset()
     this.onUnload()
